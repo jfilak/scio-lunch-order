@@ -1,10 +1,11 @@
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from scio_lunch_order.models import Menu
+from scio_lunch_order.models import Menu, UserInfo
 from scio_lunch_order.parser import parse_menu
-from scio_lunch_order.render import render_menu
+from scio_lunch_order.render import format_credit, render_menu, render_user
 
 DATA = Path(__file__).parent / "data"
 
@@ -46,3 +47,19 @@ def test_long_labels_are_wrapped(ordered):
 
 def test_empty_menu():
     assert render_menu(Menu(), color=False) == "Jídelníček je prázdný."
+
+
+def test_user_line():
+    user = UserInfo(full_name="Hynek Filák", credit=Decimal("135"))
+    assert render_user(user, color=False) == "Strávník: Hynek Filák, stav účtu: 135\xa0Kč\n"
+
+
+def test_user_line_without_credit():
+    assert render_user(UserInfo(full_name="Hynek Filák"), color=False) == (
+        "Strávník: Hynek Filák\n"
+    )
+
+
+def test_credit_format():
+    assert format_credit(Decimal("-42")) == "-42\xa0Kč"
+    assert format_credit(Decimal("1235.5")) == "1\xa0235,50\xa0Kč"

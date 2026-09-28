@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 
@@ -137,4 +138,18 @@ class Menu:
                 "items": len(self.items),
                 "ordered": len(self.ordered_items),
             },
+        }
+
+
+@dataclass(frozen=True)
+class UserInfo:
+    """The logged-in user as shown in the page header (``usrblock``)."""
+
+    full_name: str
+    credit: Decimal | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "full_name": self.full_name,
+            "credit": str(self.credit) if self.credit is not None else None,
         }

@@ -1,9 +1,10 @@
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from scio_lunch_order.parser import ParseError, parse_menu
+from scio_lunch_order.parser import ParseError, parse_menu, parse_user
 
 DATA = Path(__file__).parent / "data"
 
@@ -135,3 +136,43 @@ def test_block_without_a_header_still_yields_an_item():
     """
     menu = parse_menu(html)
     assert [item.label for item in menu.items] == ["Guláš"]
+
+
+USRBLOCK = """
+<div>
+<span id="lblHeadr" class="usrblock__user">Hynek Filák</span>
+</div>
+<div>
+<span id="lblUserSpec" class="usrblock__userparam">Stav účtu:&nbsp;{credit}</span>
+</div>
+"""
+
+
+def test_user_info_is_parsed():
+    user = parse_user(USRBLOCK.format(credit="135 Kč"))
+    assert user is not None
+    assert user.full_name == "Hynek Filák"
+    assert user.credit == Decimal("135")
+
+
+@pytest.mark.parametrize(
+    ("credit", "expected"),
+    [
+        ("0 Kč", Decimal("0")),
+        ("-42 Kč", Decimal("-42")),
+        ("1&nbsp;235,50 Kč", Decimal("1235.50")),
+        ("1 235 Kč", Decimal("1235")),
+    ],
+)
+def test_user_credit_formats(credit, expected):
+    assert parse_user(USRBLOCK.format(credit=credit)).credit == expected
+
+
+def test_user_credit_missing_or_unexpected():
+    assert parse_user(USRBLOCK.format(credit="neznámý")).credit is None
+    html = '<span class="usrblock__user">Hynek Filák</span>'
+    assert parse_user(html).credit is None
+
+
+def test_no_user_on_menu_fragment():
+    assert parse_user((DATA / "menu_ordered.html").read_text(encoding="utf-8")) is None

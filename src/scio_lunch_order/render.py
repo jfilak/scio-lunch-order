@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import textwrap
+from decimal import Decimal
 
-from .models import Day, Menu, MenuOption
+from .models import Day, Menu, MenuOption, UserInfo
 
 ORDERED_MARK = "[x]"
 FREE_MARK = "[ ]"
@@ -45,6 +46,23 @@ def render_menu(menu: Menu, *, color: bool = True, width: int = 78) -> str:
         lines.extend(_render_day(day, paint, width))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def render_user(user: UserInfo, *, color: bool = True) -> str:
+    """Render the logged-in user and their account credit as one line."""
+    paint = _Palette(color)
+    line = f"Strávník: {paint('bold', user.full_name)}"
+    if user.credit is not None:
+        credit = format_credit(user.credit)
+        line += f", stav účtu: {paint('green' if user.credit > 0 else 'yellow', credit)}"
+    return line + "\n"
+
+
+def format_credit(amount: Decimal) -> str:
+    """``Decimal("1235.5")`` -> ``1 235,50 Kč`` (Czech number format)."""
+    pattern = ",.0f" if amount == amount.to_integral_value() else ",.2f"
+    text = format(amount, pattern).replace(",", "\xa0").replace(".", ",")
+    return f"{text}\xa0Kč"
 
 
 def _summary(menu: Menu, paint: _Palette) -> str:

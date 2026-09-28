@@ -11,9 +11,9 @@ import sys
 from pathlib import Path
 
 from .browser import DEFAULT_URL, BrowserOptions, LunchSite, LunchSiteError
-from .models import Menu
-from .parser import ParseError, parse_menu
-from .render import render_menu
+from .models import Menu, UserInfo
+from .parser import ParseError, parse_menu, parse_user
+from .render import render_menu, render_user
 
 ENV_USER = "SCIO_LUNCH_USER"
 ENV_PASSWORD = "SCIO_LUNCH_PASSWORD"
@@ -32,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         html = _load_html(args)
         menu = parse_menu(html)
+        user = parse_user(html)
     except (LunchSiteError, ParseError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -42,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
         print("interrupted", file=sys.stderr)
         return 130
 
-    _print_menu(menu, args)
+    _print_menu(menu, user, args)
     return 0
 
 
@@ -152,13 +153,16 @@ def _ask_password(user: str) -> str:
     return getpass.getpass(f"Password for {user}: ")
 
 
-def _print_menu(menu: Menu, args: argparse.Namespace) -> None:
+def _print_menu(menu: Menu, user: UserInfo | None, args: argparse.Namespace) -> None:
     if args.json:
-        json.dump(menu.to_dict(), sys.stdout, ensure_ascii=False, indent=2)
+        data = {"user": user.to_dict() if user else None, **menu.to_dict()}
+        json.dump(data, sys.stdout, ensure_ascii=False, indent=2)
         sys.stdout.write("\n")
         return
 
     color = not args.no_color and sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+    if user is not None:
+        sys.stdout.write(render_user(user, color=color) + "\n")
     sys.stdout.write(render_menu(menu, color=color))
 
 

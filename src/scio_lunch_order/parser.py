@@ -9,10 +9,11 @@ from __future__ import annotations
 import copy
 import re
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from bs4 import BeautifulSoup, Tag
 
-from .models import Action, Day, FoodItem, Menu, MenuOption
+from .models import Action, Day, FoodItem, Menu, MenuOption, UserInfo
 
 ORDER_LABEL = "objednat"
 CANCEL_LABEL = "zrušit"
@@ -20,6 +21,12 @@ CANCEL_LABEL = "zrušit"
 _DOPOSTBACK_RE = re.compile(r"__doPostBack\(\s*'([^']*)'\s*,\s*'([^']*)'\s*\)")
 _DATE_RE = re.compile(r"(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})")
 _WHITESPACE_RE = re.compile(r"\s+")
+# "Stav účtu:&nbsp;135 Kč" -- the amount may be negative, use a decimal comma
+# and group thousands with (non-breaking) spaces.
+_CREDIT_RE = re.compile(
+    r"Stav\s+účtu:\s*(?P<amount>[-−]?\s*\d[\d\s]*(?:[.,]\d+)?)\s*Kč",
+    re.IGNORECASE,
+)
 
 
 class ParseError(Exception):
@@ -58,6 +65,38 @@ def parse_menu(html: str) -> Menu:
             option.items.append(_parse_food(element))
 
     return menu
+
+
+def parse_user(html: str) -> UserInfo | None:
+    """Parse the header ``usrblock`` of a full page into a :class:`UserInfo`.
+
+    Returns ``None`` when the page shows no user (anonymous visitor, or just
+    the ``warea`` fragment was passed in).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    name_element = soup.find(class_="usrblock__user")
+    if name_element is None:
+        return None
+    full_name = _clean(name_element.get_text(""))
+    if not full_name:
+        return None
+    return UserInfo(
+        full_name=full_name,
+        credit=_parse_credit(_text_of(soup, "usrblock__userparam")),
+    )
+
+
+def _parse_credit(text: str) -> Decimal | None:
+    """``Stav účtu:&nbsp;135 Kč`` -> ``Decimal("135")``."""
+    match = _CREDIT_RE.search(_clean(text))
+    if match is None:
+        return None
+    amount = re.sub(r"\s", "", match.group("amount"))
+    amount = amount.replace("−", "-").replace(",", ".")
+    try:
+        return Decimal(amount)
+    except InvalidOperation:
+        return None
 
 
 def _menu_elements(warea: Tag) -> list[Tag]:
