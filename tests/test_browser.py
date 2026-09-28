@@ -22,9 +22,10 @@ class FakeLocator:
 
 class FakePage:
     SELECTORS = {
-        "anonymous": {"a#cmdLoginUser"},
+        # The anonymous page shows the public menu too.
+        "anonymous": {"a#cmdLoginUser", ".warea"},
         "form": {"input#txtLoginA", "input#txtLoginB", "a#cmdLogin"},
-        "menu": {".warea"},
+        "menu": {"a#cmdLogoutUser", ".warea"},
     }
 
     def __init__(self, state: str = "anonymous") -> None:
@@ -33,7 +34,7 @@ class FakePage:
         self.calls: list[tuple[str, str]] = []
 
     def _present(self, selector: str) -> bool:
-        return selector in self.SELECTORS[self.state]
+        return any(part.strip() in self.SELECTORS[self.state] for part in selector.split(","))
 
     # -- the slice of the Playwright API that LunchSite uses ---------------
 
@@ -104,8 +105,13 @@ def test_login_is_skipped_when_the_menu_is_already_there():
     assert page.calls == []
 
 
-def test_menu_html_fails_when_the_menu_is_not_rendered():
+def test_login_is_not_confused_by_the_public_menu():
     site, _page = make_site()
+    assert not site.is_logged_in()
+
+
+def test_menu_html_fails_when_the_menu_is_not_rendered():
+    site, _page = make_site(state="form")
     with pytest.raises(LunchSiteError):
         site.menu_html()
 

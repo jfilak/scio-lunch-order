@@ -53,6 +53,9 @@ class LunchSite:
     USERNAME_INPUT = "input#txtLoginA"
     PASSWORD_INPUT = "input#txtLoginB"
     LOGIN_SUBMIT = "a#cmdLogin"
+    # Only rendered for a logged-in user.  Do not use MENU as the login marker:
+    # the anonymous page shows the public menu in a ``.warea`` element as well.
+    LOGOUT_LINK = "a#cmdLogoutUser"
     MENU = ".warea"
 
     def __init__(self, options: BrowserOptions | None = None, page: Page | None = None) -> None:
@@ -137,13 +140,20 @@ class LunchSite:
         self.page.fill(self.USERNAME_INPUT, username)
         self.page.fill(self.PASSWORD_INPUT, password)
         try:
-            self._click(self.LOGIN_SUBMIT, wait_for=self.MENU)
+            self._click(self.LOGIN_SUBMIT, wait_for=self.LOGOUT_LINK)
         except PlaywrightTimeoutError as exc:
             raise LoginError(self._login_failure_hint()) from exc
         LOG.info("logged in")
 
     def is_logged_in(self) -> bool:
-        return self.page.locator(self.LOGIN_TRIGGER).count() == 0
+        # Wait until the page decides: either the login link or the logout link.
+        try:
+            self.page.wait_for_selector(
+                f"{self.LOGIN_TRIGGER}, {self.LOGOUT_LINK}", state="attached"
+            )
+        except PlaywrightTimeoutError as exc:
+            raise LunchSiteError("neither the login nor the logout link appeared") from exc
+        return self.page.locator(self.LOGOUT_LINK).count() > 0
 
     def menu_html(self) -> str:
         """The current page HTML, waiting for the menu to be rendered."""
