@@ -9,6 +9,7 @@ from scio_lunch_order.render import (
     format_credit,
     render_menu,
     render_order_result,
+    render_order_results,
     render_user,
 )
 
@@ -99,3 +100,35 @@ def test_order_result_without_a_change(ordered):
 
     dry_run = OrderResult(OrderResult.DRY_RUN, day, day.items[0])
     assert render_order_result(dry_run, color=False).startswith("Neobjednáno (--dry-run): ")
+
+
+def test_order_results_per_day(ordered):
+    results = [
+        OrderResult(OrderResult.ORDERED, ordered.days[0], ordered.days[0].items[0], message="ok"),
+        OrderResult(OrderResult.SKIPPED, ordered.days[1], None, message="nic nevybráno"),
+        OrderResult(OrderResult.FAILED, ordered.days[2], ordered.days[2].items[1], message="timeout"),
+    ]
+    text = render_order_results(
+        results, credit_before=Decimal("300"), credit_after=Decimal("200"), color=False
+    )
+    assert text == (
+        "Celý jídelníček: objednáno: 1, přeskočeno: 1, chyba: 1\n"
+        "\n"
+        "Objednáno: zítra, 21. září (2026-09-21)\n"
+        "    3. Vepřové maso po námořnicku (rajský protlak, vejce) (lepek 1.1,3),\n"
+        "      těstoviny 1,3\n"
+        "\n"
+        "Přeskočeno: úterý 22. září (2026-09-22)\n"
+        "    nic nevybráno\n"
+        "\n"
+        "Chyba: středa 23. září (2026-09-23)\n"
+        "    6. Játrová omáčka(1), dušená rýže\n"
+        "    timeout\n"
+        "\n"
+        "Stav účtu: 300\xa0Kč → 200\xa0Kč\n"
+    )
+    assert "\033[31mChyba\033[0m" in render_order_results(results, color=True)
+
+
+def test_order_results_of_an_empty_menu():
+    assert render_order_results([], color=False) == "Jídelníček je prázdný.\n"

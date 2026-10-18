@@ -1,4 +1,4 @@
-"""Command line entry point: log in, then print the menu or order a dish."""
+"""Command line entry point: log in, then print the menu or order dishes."""
 
 from __future__ import annotations
 
@@ -9,21 +9,19 @@ import logging
 import os
 import sys
 from collections.abc import Callable
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from .browser import DEFAULT_URL, BrowserOptions, LunchSite, LunchSiteError, OrderError
+from playwright.sync_api import Error as PlaywrightError
+
+from .browser import DEFAULT_URL, BrowserOptions, LunchSite, LunchSiteError
+from .choosers import Chooser, ask_user, choose_nothing
 from .models import Menu, OrderResult, UserInfo
-from .parser import ParseError, parse_info_message, parse_menu, parse_user
-from .render import render_menu, render_order_result, render_user
-from .selection import (
-    SelectionError,
-    czech_date,
-    ensure_orderable,
-    find_item,
-    parse_day_spec,
-    parse_item_spec,
-)
+from .ordering import choose_dishes, order_chosen, order_dish
+from .parser import ParseError, parse_menu, parse_user
+from .render import render_menu, render_order_result, render_order_results, render_user
+from .selection import SelectionError, parse_day_spec, parse_item_spec
 
 ENV_USER = "SCIO_LUNCH_USER"
 ENV_PASSWORD = "SCIO_LUNCH_PASSWORD"
@@ -42,6 +40,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "order":
             result = _order(args)
+        elif args.command == "order-all":
+            results, credit_before, credit_after = _order_all(args)
         else:
             html = _load_html(args)
             menu = parse_menu(html)
@@ -58,6 +58,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "order":
         _print_order(result, args)
+    elif args.command == "order-all":
+        _print_order_all(results, credit_before, credit_after, args)
+        return 1 if any(result.status == OrderResult.FAILED for result in results) else 0
     else:
         _print_menu(menu, user, args)
     return 0
@@ -97,6 +100,22 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     _add_common_arguments(order, suppress=True)
 
+    order_all = commands.add_parser(
+        "order-all",
+        help="order every day that has nothing ordered yet",
+        description=(
+            "Order every day of the menu that has nothing ordered yet. A day with a "
+            "single dish gets it, for a day with more dishes you are asked which one. "
+            "All questions come first, then the days are ordered one after another."
+        ),
+    )
+    order_all.add_argument_group("order").add_argument(
+        "--dry-run",
+        action="store_true",
+        help="log in and choose the dishes, but do not order them",
+    )
+    _add_common_arguments(order_all, suppress=True)
+
     args = parser.parse_args(argv)
     if args.from_file is None and not args.user:
         parser.error(f"a user name is required: pass --user or set ${ENV_USER}")
@@ -119,7 +138,7 @@ def _add_common_arguments(parser: argparse.ArgumentParser, suppress: bool = Fals
         metavar="PATH",
         type=Path,
         default=default(None),
-        help="parse a saved HTML page instead of opening the site; 'order' then orders nothing",
+        help="parse a saved HTML page instead of opening the site; nothing gets ordered",
     )
     source.add_argument(
         "--url",
@@ -158,6 +177,13 @@ def _add_common_arguments(parser: argparse.ArgumentParser, suppress: bool = Fals
         default=default(30.0),
         metavar="SECONDS",
         help="per-step timeout (default: 30)",
+    )
+    browser.add_argument(
+        "--pause",
+        type=float,
+        default=default(2.0),
+        metavar="SECONDS",
+        help="average pause before every click, to use the site at a human pace (default: 2)",
     )
     browser.add_argument(
         "--insecure",
@@ -231,56 +257,60 @@ def _load_html(args: argparse.Namespace) -> str:
 def _order(args: argparse.Namespace) -> OrderResult:
     if args.from_file:
         LOG.info("reading %s, nothing will be ordered", args.from_file)
-        return _order_on_page(None, args.from_file.read_text(encoding="utf-8"), args)
+        html = args.from_file.read_text(encoding="utf-8")
+        return order_dish(None, html, args.day, args.item)[0]
 
     password = args.password or _ask_password(args.user)
     with LunchSite(_browser_options(args)) as site:
         site.open()
         site.login(args.user, password)
-        result = _order_on_page(site, site.menu_html(), args)
-        _keep_page(site, site.page.content(), args)
+        result, html = order_dish(site, site.menu_html(), args.day, args.item, dry_run=args.dry_run)
+        _keep_page(site, html, args)
     return result
 
 
-def _order_on_page(site: LunchSite | None, html: str, args: argparse.Namespace) -> OrderResult:
-    """Order the requested dish of the menu page ``html``.
+def _order_all(
+    args: argparse.Namespace,
+) -> tuple[list[OrderResult], Decimal | None, Decimal | None]:
+    """Order every day; returns the results and the credit before and after."""
+    choose = _chooser()
+    if args.from_file:
+        LOG.info("reading %s, nothing will be ordered", args.from_file)
+        html = args.from_file.read_text(encoding="utf-8")
+        results = order_chosen(None, html, choose_dishes(parse_menu(html), choose))
+        return results, _credit_of(html), None
 
-    Without a ``site`` (or with --dry-run) the dish is only looked up.
-    """
-    day, item = find_item(parse_menu(html), args.day, args.item)
+    password = args.password or _ask_password(args.user)
+    with LunchSite(_browser_options(args)) as site:
+        site.open()
+        site.login(args.user, password)
+        html = site.menu_html()
+        credit_before = _credit_of(html)
+        plan = choose_dishes(parse_menu(html), choose)
+        if not args.dry_run and any(planned.status == OrderResult.CHOSEN for planned in plan):
+            # Answering may have taken a while and the site logs idle users
+            # out: log in again if needed and start from a fresh menu.
+            site.login(args.user, password)
+            html = site.menu_html()
+        results = order_chosen(site, html, plan, dry_run=args.dry_run)
+        # Whatever happens to the browser now, the results must be reported.
+        try:
+            html = site.page.content()
+            _keep_page(site, html, args)
+        except PlaywrightError:
+            LOG.warning("cannot read the final page", exc_info=args.verbose)
+            return results, credit_before, None
+    return results, credit_before, _credit_of(html)
+
+
+def _chooser() -> Chooser:
+    """Ask on the terminal; without one, days with a choice are skipped."""
+    return ask_user() if sys.stdin.isatty() else choose_nothing
+
+
+def _credit_of(html: str) -> Decimal | None:
     user = parse_user(html)
-    credit_before = user.credit if user else None
-
-    # An ordered dish still has its 'Objednat' link; clicking it again would
-    # most likely order a second portion.
-    if item.ordered:
-        LOG.info("dish %s is already ordered", item.number)
-        return OrderResult(OrderResult.ALREADY_ORDERED, day, item, credit_before=credit_before)
-    ensure_orderable(day, item)
-    if site is None or args.dry_run:
-        return OrderResult(OrderResult.DRY_RUN, day, item, credit_before=credit_before)
-
-    html = site.order(item.order_action, expected_date=czech_date(day.date))
-    message = parse_info_message(html)
-    # The popup alone proves nothing: the dish must be marked as ordered now.
-    try:
-        _day, item = find_item(parse_menu(html), args.day, args.item)
-    except SelectionError as exc:
-        raise OrderError(f"the dish is gone from the page after the order: {exc}") from exc
-    if not item.ordered:
-        raise OrderError(
-            f"the site answered {message!r}, but the dish is not marked as ordered"
-        )
-
-    user = parse_user(html)
-    return OrderResult(
-        OrderResult.ORDERED,
-        day,
-        item,
-        message=message,
-        credit_before=credit_before,
-        credit_after=user.credit if user else None,
-    )
+    return user.credit if user else None
 
 
 def _browser_options(args: argparse.Namespace) -> BrowserOptions:
@@ -290,6 +320,7 @@ def _browser_options(args: argparse.Namespace) -> BrowserOptions:
         timeout_ms=int(args.timeout * 1000),
         slow_mo_ms=args.slow_mo,
         ignore_https_errors=args.insecure,
+        pause_s=args.pause,
     )
 
 
@@ -327,6 +358,30 @@ def _print_order(result: OrderResult, args: argparse.Namespace) -> None:
         _print_json(result.to_dict())
         return
     sys.stdout.write(render_order_result(result, color=_use_color(args)))
+
+
+def _print_order_all(
+    results: list[OrderResult],
+    credit_before: Decimal | None,
+    credit_after: Decimal | None,
+    args: argparse.Namespace,
+) -> None:
+    if args.json:
+        _print_json(
+            {
+                "days": [result.to_dict() for result in results],
+                "credit_before": str(credit_before) if credit_before is not None else None,
+                "credit_after": str(credit_after) if credit_after is not None else None,
+            }
+        )
+        return
+    text = render_order_results(
+        results,
+        credit_before=credit_before,
+        credit_after=credit_after,
+        color=_use_color(args),
+    )
+    sys.stdout.write(text)
 
 
 def _print_json(data: dict[str, Any]) -> None:

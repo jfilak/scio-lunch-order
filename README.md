@@ -7,8 +7,9 @@ The HTTP server returns ASP.NET HTML pages.
 
 ## Status
 
-The app logs in, reads the weekly menu and prints it, and orders one dish for
-one day per run. Cancelling an order is not supported yet.
+The app logs in, reads the weekly menu and prints it, orders one dish for one
+day, or orders every day of the menu in one run. Cancelling an order is not
+supported yet.
 
 ## Installation
 
@@ -60,6 +61,7 @@ Useful options:
 | `--from-file PATH` | parse a saved page instead of logging in (no browser, no password) |
 | `--save-html PATH` | keep the downloaded page, e.g. as a new test fixture |
 | `--headed`, `--slow-mo MS` | watch the browser do the work |
+| `--pause SECONDS` | average pause before every click (default 2, each pause 0.5-1.5x of it) |
 | `--screenshot PATH` | save a screenshot of the menu page |
 | `--insecure` | accept an invalid HTTPS certificate |
 | `-v` | log every step to stderr |
@@ -103,6 +105,50 @@ Stav účtu: 1 700 Kč → 1 600 Kč
 
 All the options listed above (`--json`, `--headed`, ...) work with `order` too.
 
+### Usage: order all
+
+```sh
+.venv/bin/scio-lunch order-all
+```
+
+```
+čtvrtek 15. října (2026-10-15) -- vyberte jídlo:
+    3. Bulgur se sýrem Halloumi, zeleninou (teplý pokrm) 1,7
+    6. Kynuté knedlíky s povidly, sypané perníkem (1,3,7)
+Číslo jídla (3, 6), Enter = nic: 6
+...
+Celý jídelníček: objednáno: 6, už bylo objednáno: 2, přeskočeno: 1
+
+Už bylo objednáno: zítra, 13. října (2026-10-13)
+    3. Těstovinový salát s drůbežím masem, brokolicí, sýrem (teplý) 1,3,7,9
+...
+Objednáno: čtvrtek 15. října (2026-10-15)
+    6. Kynuté knedlíky s povidly, sypané perníkem (1,3,7)
+...
+Stav účtu: 1 700 Kč → 1 100 Kč
+```
+
+- A day that has a dish ordered is left alone.
+- A day with a single dish gets it without asking.
+- For a day with more dishes you are asked which one; Enter orders nothing
+  that day. The questions go to stderr, so `--json` output stays clean.
+- All questions come first, the site is not touched while you decide. If it
+  logged you out meanwhile, the app logs in again before ordering.
+- The days are then ordered strictly one after another, at a human pace (see
+  `--pause`), each one from the menu page the previous order ended on.
+- A failure of the site (no dialog, no confirmation, dish not marked as
+  ordered) stops the run: the remaining days are reported as skipped, and the
+  exit code is 1. A day that changed meanwhile (e.g. ordered on the site) fails
+  alone.
+- Without a terminal (e.g. from cron) nobody can be asked: days with more
+  dishes are skipped with a warning, the others are ordered.
+- `--dry-run` asks, but orders nothing; so does `--from-file`.
+
+The choice is made by a *chooser* (`choosers.py`): a function that gets the
+day and its dishes and returns one of them, or `None`. Only the interactive
+one exists now; a list of preferred dishes or an AI deciding between meat and
+vegetarian are meant to be further choosers.
+
 
 ## Development
 
@@ -112,7 +158,8 @@ All the options listed above (`--json`, `--headed`, ...) work with `order` too.
 
 The tests need neither the network nor a browser: the parser runs against the
 saved pages in `tests/data`, and the login and order sequences run against a
-stub page (`tests/fake_site.py`) that mimics the postback behaviour of the site.
+stub page (`tests/fake_site.py`) that mimics the postback behaviour of the site
+-- including a canteen that takes any number of orders in a row.
 
 ```
 src/scio_lunch_order/
@@ -120,6 +167,8 @@ src/scio_lunch_order/
     parser.py    warea markup -> models, dialog and popup texts
     models.py    Menu / Day / MenuOption / FoodItem / Action / OrderResult
     selection.py --day / --item -> the dish to order
+    ordering.py  order one dish; choose and order the dishes of every day
+    choosers.py  how a dish is picked on a day with more of them
     render.py    text output
     cli.py       argument parsing, JSON output
 ```
@@ -146,7 +195,9 @@ src/scio_lunch_order/
    `Opravdu si přejete objednat rybí nugetky … dne pátek 16. října 2026, …?`
 3. Clicking `btnDialogYes` reloads the menu with a popup: the div element with
    the id `infoPanel` (`Vaše objednávka byla úspěšně provedena`), which a script
-   hides by setting the css style display to 'none'.
+   hides by setting the css style display to 'none'. The hidden popup stays in
+   the page, so before the next order the app waits for the next page to load
+   instead of just looking for `infoPanel`.
 4. An ordered dish keeps its `Objednat` button and gets a `Zrušit objednávku`
    button next to it.
 

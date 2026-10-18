@@ -4,12 +4,17 @@ The site is a classic ASP.NET WebForms application: every button is an
 ``<a href="javascript:__doPostBack(...)">`` that submits the form and replaces
 the page.  Therefore every step clicks a *selector* (never a stale element
 handle) and then waits for a selector that can only exist on the next page.
+
+Every click is preceded by a randomised pause (:attr:`BrowserOptions.pause_s`)
+so that the site is used at the pace of a person, not of a script.
 """
 
 from __future__ import annotations
 
 import logging
+import random
 import re
+import time
 from dataclasses import dataclass
 from types import TracebackType
 
@@ -51,6 +56,8 @@ class BrowserOptions:
     timeout_ms: int = 30_000
     slow_mo_ms: int = 0
     ignore_https_errors: bool = False
+    # Average pause before every click; each pause is 0.5-1.5 times as long.
+    pause_s: float = 0.0
 
 
 class LunchSite:
@@ -215,21 +222,32 @@ class LunchSite:
 
     # -- internals ---------------------------------------------------------
 
-    def _click(self, selector: str, wait_for: str, state: str = "visible") -> None:
+    def _click(self, selector: str, wait_for: str) -> None:
         """Click a postback link and wait for the re-rendered page."""
         self.page.wait_for_selector(selector, state="visible")
+        self._pause()
         self.page.click(selector)
-        self.page.wait_for_selector(wait_for, state=state)
+        self.page.wait_for_selector(wait_for, state="visible")
 
     def _postback(self, selector: str, wait_for: str) -> str:
-        """Like :meth:`_click`, returning the HTML of the new page.
+        """Click a postback link and return the HTML of the page it loads.
 
-        ``wait_for`` must not be on the current page, and the new page must be
-        complete before it is parsed, not just its first elements.
+        Unlike :meth:`_click` this waits for the navigation first: after an
+        order the page still holds the hidden ``infoPanel``, which must not be
+        taken for the answer to the next click.  ``wait_for`` is looked up only
+        in the complete new page, and only needs to be attached.
         """
-        self._click(selector, wait_for=wait_for, state="attached")
-        self.page.wait_for_load_state("domcontentloaded")
+        self.page.wait_for_selector(selector, state="visible")
+        self._pause()
+        with self.page.expect_navigation(wait_until="domcontentloaded"):
+            self.page.click(selector)
+        self.page.wait_for_selector(wait_for, state="attached")
         return self.page.content()
+
+    def _pause(self) -> None:
+        """Wait like a person looking at the page before clicking."""
+        if self.options.pause_s > 0:
+            time.sleep(random.uniform(0.5, 1.5) * self.options.pause_s)
 
     def _login_failure_hint(self) -> str:
         if self.page.locator(self.USERNAME_INPUT).count() == 0:

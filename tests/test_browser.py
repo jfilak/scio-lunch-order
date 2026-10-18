@@ -11,12 +11,20 @@ from fake_site import (
     ORDER_LINK,
     ORDER_LINK_ID,
     PASSWORD,
+    CanteenPage,
     FakePage,
     add_info_panel,
+    order_link,
     order_page,
 )
 
-from scio_lunch_order.browser import LoginError, LunchSite, LunchSiteError, OrderError
+from scio_lunch_order.browser import (
+    BrowserOptions,
+    LoginError,
+    LunchSite,
+    LunchSiteError,
+    OrderError,
+)
 from scio_lunch_order.models import Action
 from scio_lunch_order.parser import parse_info_message, parse_menu
 
@@ -119,3 +127,33 @@ def test_order_without_an_answer_to_the_confirmation_fails():
     with pytest.raises(OrderError) as error:
         LunchSite(page=page).order(ORDER_ACTION, expected_date="16. října 2026")
     assert "may or may not be ordered" in str(error.value)
+
+
+def test_every_click_waits_like_a_person(monkeypatch):
+    pauses = []
+    monkeypatch.setattr("scio_lunch_order.browser.time.sleep", pauses.append)
+    site = LunchSite(BrowserOptions(pause_s=2.0), page=order_page())
+    site.order(ORDER_ACTION, expected_date="16. října 2026")
+
+    assert len(pauses) == 2
+    assert all(1.0 <= pause <= 3.0 for pause in pauses)
+
+
+def test_no_pause_by_default(monkeypatch):
+    monkeypatch.setattr("scio_lunch_order.browser.time.sleep", pytest.fail)
+    site, _page = make_site()
+    site.login("parent", PASSWORD)
+
+
+def test_next_order_is_not_answered_by_the_popup_of_the_previous_one():
+    # After an order the hidden infoPanel stays on the page; the next click
+    # must wait for the new page instead of finding the old popup.
+    page = CanteenPage()
+    site = LunchSite(page=page)
+    site.order(ORDER_ACTION, expected_date="16. října 2026")
+    assert parse_info_message(page.content()) is not None
+
+    monday_6 = order_link(4, 1)[len('a[id="') : -len('"]')]
+    html = site.order(Action("Objednat", monday_6), expected_date="19. října 2026")
+    monday = next(day for day in parse_menu(html).days if day.label == "pondělí 19. října")
+    assert [item.ordered for item in monday.items] == [False, True]

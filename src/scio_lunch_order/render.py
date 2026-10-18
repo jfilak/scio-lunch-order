@@ -1,4 +1,4 @@
-"""Human readable rendering of a parsed :class:`~.models.Menu`."""
+"""Human readable rendering of a parsed :class:`~.models.Menu` and of orders."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ class _Palette:
         "bold": "1",
         "dim": "2",
         "green": "32",
+        "red": "31",
         "yellow": "33",
         "cyan": "36",
     }
@@ -58,30 +59,75 @@ def render_user(user: UserInfo, *, color: bool = True) -> str:
     return line + "\n"
 
 
+_STATUSES = {
+    OrderResult.ORDERED: ("green", "Objednáno"),
+    OrderResult.ALREADY_ORDERED: ("green", "Už bylo objednáno"),
+    OrderResult.DRY_RUN: ("yellow", "Neobjednáno (--dry-run)"),
+    OrderResult.SKIPPED: ("yellow", "Přeskočeno"),
+    OrderResult.FAILED: ("red", "Chyba"),
+}
+
+
 def render_order_result(result: OrderResult, *, color: bool = True, width: int = 78) -> str:
     """Render the outcome of the ``order`` command."""
     paint = _Palette(color)
-    headline = {
-        OrderResult.ORDERED: paint("green", "Objednáno"),
-        OrderResult.ALREADY_ORDERED: paint("green", "Už bylo objednáno"),
-        OrderResult.DRY_RUN: paint("yellow", "Neobjednáno (--dry-run)"),
-    }[result.status]
+    lines = _render_result(result, paint, width, show_message=True)
+    lines.extend(_credit(result.credit_before, result.credit_after))
+    return "\n".join(lines) + "\n"
+
+
+def render_order_results(
+    results: list[OrderResult],
+    *,
+    credit_before: Decimal | None = None,
+    credit_after: Decimal | None = None,
+    color: bool = True,
+    width: int = 78,
+) -> str:
+    """Render the outcome of the ``order-all`` command, day by day."""
+    paint = _Palette(color)
+    if not results:
+        return "Jídelníček je prázdný.\n"
+
+    counts = [
+        f"{label.lower()}: {count}"
+        for status, (_style, label) in _STATUSES.items()
+        if (count := sum(result.status == status for result in results))
+    ]
+    lines = [paint("bold", "Celý jídelníček: ") + ", ".join(counts), ""]
+    for result in results:
+        # The site's 'objednávka byla úspěšně provedena' would repeat on every day.
+        show_message = result.status != OrderResult.ORDERED
+        lines.extend(_render_result(result, paint, width, show_message=show_message))
+        lines.append("")
+    lines.extend(_credit(credit_before, credit_after))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_result(
+    result: OrderResult, paint: _Palette, width: int, *, show_message: bool
+) -> list[str]:
+    style, label = _STATUSES[result.status]
     day = result.day
     date = f" ({day.date.isoformat()})" if day.date else ""
-    lines = [f"{headline}: {paint('bold', day.label or '?')}{date}"]
+    lines = [f"{paint(style, label)}: {paint('bold', day.label or '?')}{date}"]
 
     item = result.item
-    number = f"{item.number}. " if item.number else ""
-    lines.extend(_wrap(f"{number}{item.label}", _INDENT, width, paint))
-    if result.message:
+    if item is not None:
+        number = f"{item.number}. " if item.number else ""
+        lines.extend(_wrap(f"{number}{item.label}", _INDENT, width, paint))
+    if result.message and show_message:
         lines.extend(_wrap(result.message, _INDENT, width, paint, "dim"))
+    return lines
 
-    if result.credit_before is not None:
-        credit = format_credit(result.credit_before)
-        if result.credit_after is not None and result.credit_after != result.credit_before:
-            credit += f" → {format_credit(result.credit_after)}"
-        lines.append(f"Stav účtu: {credit}")
-    return "\n".join(lines) + "\n"
+
+def _credit(before: Decimal | None, after: Decimal | None) -> list[str]:
+    if before is None:
+        return []
+    credit = format_credit(before)
+    if after is not None and after != before:
+        credit += f" → {format_credit(after)}"
+    return [f"Stav účtu: {credit}"]
 
 
 def format_credit(amount: Decimal) -> str:

@@ -157,15 +157,22 @@ class UserInfo:
 
 @dataclass(frozen=True)
 class OrderResult:
-    """What the ``order`` command did with the requested dish."""
+    """What the ``order`` commands did with the dish of one day.
+
+    ``item`` is ``None`` only for a day skipped before any dish was chosen.
+    """
 
     ORDERED: ClassVar[str] = "ordered"
     ALREADY_ORDERED: ClassVar[str] = "already-ordered"
     DRY_RUN: ClassVar[str] = "dry-run"
+    SKIPPED: ClassVar[str] = "skipped"
+    FAILED: ClassVar[str] = "failed"
+    # Planned by 'order-all', not ordered yet; never the final status.
+    CHOSEN: ClassVar[str] = "chosen"
 
     status: str
     day: Day
-    item: FoodItem
+    item: FoodItem | None
     message: str | None = None
     credit_before: Decimal | None = None
     credit_after: Decimal | None = None
@@ -177,7 +184,7 @@ class OrderResult:
                 "label": self.day.label,
                 "date": self.day.date.isoformat() if self.day.date else None,
             },
-            "item": self.item.to_dict(),
+            "item": self.item.to_dict() if self.item else None,
             "message": self.message,
             "credit_before": _decimal_to_str(self.credit_before),
             "credit_after": _decimal_to_str(self.credit_after),

@@ -2,15 +2,24 @@
 
 No browser is involved: :class:`FakePage` models what the site does -- each
 postback replaces the page, so a different set of selectors becomes available.
+Like in a browser, the old page stays until something waits for the new one:
+a ``wait_for_selector`` matching an element of the old page returns at once.
 The login states are described by selector sets.  The states of the order
 flow serve saved pages from ``tests/data`` and answer selectors from their
-markup.
+markup.  :class:`CanteenPage` goes further and takes any number of orders.
 """
 
+import re
+from collections.abc import Callable
+from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+from scio_lunch_order.parser import parse_menu
+from scio_lunch_order.selection import WEEKDAYS, czech_date
 
 DATA = Path(__file__).parent / "data"
 PASSWORD = "s3cret"
@@ -51,10 +60,12 @@ class FakePage:
         self.transitions = dict(transitions or {})
         self.values: dict[str, str] = {}
         self.calls: list[tuple[str, str]] = []
+        # Replaces the page with the one a click loads, once that is waited for.
+        self._loading: Callable[[], None] | None = None
 
     def _present(self, selector: str) -> bool:
         if self.state in self.pages:
-            return bool(BeautifulSoup(self.pages[self.state], "html.parser").select(selector))
+            return bool(_soup(self.pages[self.state]).select(selector))
         return any(part.strip() in self.SELECTORS[self.state] for part in selector.split(","))
 
     # -- the slice of the Playwright API that LunchSite uses ---------------
@@ -66,11 +77,17 @@ class FakePage:
         return FakeLocator(self._present(selector))
 
     def wait_for_selector(self, selector: str, **_kwargs) -> None:
+        if self._present(selector):
+            return
+        self._load()
         if not self._present(selector):
             raise PlaywrightTimeoutError(f"Timeout waiting for {selector}")
 
-    def wait_for_load_state(self, *_args, **_kwargs) -> None:
-        pass
+    @contextmanager
+    def expect_navigation(self, **_kwargs):
+        yield
+        if not self._load():
+            raise PlaywrightTimeoutError("Timeout waiting for navigation")
 
     def fill(self, selector: str, value: str) -> None:
         assert self._present(selector), f"filling a missing {selector}"
@@ -80,12 +97,7 @@ class FakePage:
     def click(self, selector: str) -> None:
         assert self._present(selector), f"clicking a missing {selector}"
         self.calls.append(("click", selector))
-        if (self.state, selector) in self.transitions:
-            self.state = self.transitions[(self.state, selector)]
-        elif selector == "a#cmdLoginUser":
-            self.state = "form"
-        elif selector == "a#cmdLogin" and self.values.get("input#txtLoginB") == PASSWORD:
-            self.state = "menu"
+        self._loading = self._postback(selector)
 
     def content(self) -> str:
         if self.state in self.pages:
@@ -94,6 +106,37 @@ class FakePage:
 
     def inner_text(self, _selector: str) -> str:
         return "Nesprávné jméno nebo heslo" if self.state == "form" else ""
+
+    # -- the model of the site ---------------------------------------------
+
+    def _postback(self, selector: str) -> Callable[[], None] | None:
+        """What loading the page after a click on ``selector`` does.
+
+        ``None`` for a click that does not post back.
+        """
+        if (self.state, selector) in self.transitions:
+            new_state = self.transitions[(self.state, selector)]
+        elif selector == "a#cmdLoginUser":
+            new_state = "form"
+        elif selector == "a#cmdLogin":
+            new_state = "menu" if self.values.get("input#txtLoginB") == PASSWORD else "form"
+        else:
+            return None
+        return lambda: setattr(self, "state", new_state)
+
+    def _load(self) -> bool:
+        """Finish loading the page a click asked for; False if there is none."""
+        if self._loading is None:
+            return False
+        self._loading()
+        self._loading = None
+        return True
+
+
+@lru_cache(maxsize=16)
+def _soup(html: str) -> BeautifulSoup:
+    """Parsed once per page: the pages are large and selectors many."""
+    return BeautifulSoup(html, "html.parser")
 
 
 def read_page(name: str) -> str:
@@ -133,4 +176,79 @@ def order_page(
             ("menu", ORDER_LINK): "confirm",
             ("confirm", CONFIRM_YES): "done",
         },
+    )
+
+
+def order_link(day: int, food_type: int) -> str:
+    """The selector of 'Objednat' of the ``food_type``-th dish of the ``day``-th day."""
+    return (
+        f'a[id="repeaterDays_ctl{day:02}_repeaterFoodType_ctl{food_type:02}'
+        '_repeaterFood_ctl00_btnFood"]'
+    )
+
+
+class CanteenPage(FakePage):
+    """A logged-in menu that takes orders the way the site does.
+
+    'Objednat' shows the dialog about its dish, 'Ano' marks the dish as
+    ordered, charges ``PRICE`` and shows the popup -- the popup stays in the
+    markup of the next page.  The links in ``refuse`` get the popup with an
+    error instead of the dialog.
+    """
+
+    PRICE = 100
+
+    def __init__(self, html: str = MENU_PAGE, refuse: tuple[str, ...] = ()) -> None:
+        super().__init__(state="menu", pages={"menu": html})
+        self.refuse = refuse
+        self._pending: str | None = None
+
+    def _postback(self, selector: str) -> Callable[[], None] | None:
+        if self.state != "menu":  # logged out: the login pages of FakePage
+            return super()._postback(selector)
+        soup = BeautifulSoup(self.pages["menu"], "html.parser")
+        for panel in soup.select("#dialogPanel, #infoPanel"):
+            panel.decompose()
+
+        if selector == CONFIRM_YES:
+            link = soup.find(id=self._pending)
+            cancel = soup.new_tag("a", id=f"{self._pending}2", href="javascript:void(0)")
+            cancel.string = "Zrušit objednávku"
+            link.insert_after(cancel)
+            credit = soup.find(id="lblUserSpec")
+            amount = int(re.search(r"(\d+) Kč", credit.get_text()).group(1)) - self.PRICE
+            credit.string = f"Stav účtu:\xa0{amount} Kč"
+            panel = _info_panel("Vaše objednávka byla úspěšně provedena")
+            self._pending = None
+        elif selector in self.refuse:
+            panel = _info_panel("Objednávky na tento den jsou uzavřeny")
+        else:
+            self._pending = re.fullmatch(r'a\[id="(.+)"\]', selector).group(1)
+            panel = self._dialog(self._pending)
+
+        soup.find(class_="sticky").insert_before(BeautifulSoup(panel, "html.parser"))
+        return lambda: self.pages.__setitem__("menu", str(soup))
+
+    def _dialog(self, element_id: str) -> str:
+        menu = parse_menu(self.pages["menu"])
+        day, item = next(
+            (day, item)
+            for day in menu.days
+            for item in day.items
+            if item.order_action and item.order_action.element_id == element_id
+        )
+        dish = item.label[0].lower() + item.label[1:]
+        return (
+            '<div id="dialogPanel" class="popupmsgbck zix103"><span class="paneldlg__msg">'
+            f"Opravdu si přejete objednat <br>{dish} dne "
+            f"{WEEKDAYS[day.date.weekday()]} {czech_date(day.date)}, jídelna Jídelna?</span>"
+            '<a id="btnDialogYes" href="javascript:void(0)">Ano</a>'
+            '<a id="btnDialogNo" href="javascript:void(0)">Ne</a></div>'
+        )
+
+
+def _info_panel(text: str) -> str:
+    return (
+        '<div id="infoPanel" class="popupmsgbck zix103 infobck">'
+        f'<div class="popupinfo__label">{text}</div></div>'
     )

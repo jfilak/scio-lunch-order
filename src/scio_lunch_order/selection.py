@@ -96,6 +96,11 @@ def parse_day_spec(text: str) -> DaySpec:
     return DaySpec(text=text, day=day, month=month, year=year, weekday=weekday)
 
 
+def day_spec_for(value: date) -> DaySpec:
+    """The :class:`DaySpec` of exactly ``value``."""
+    return DaySpec(text=value.isoformat(), day=value.day, month=value.month, year=value.year)
+
+
 def parse_item_spec(text: str) -> str:
     """``3`` or ``3.`` -> ``"3"``, comparable with :attr:`FoodItem.number`."""
     match = _ITEM_RE.fullmatch(_normalize(text))
