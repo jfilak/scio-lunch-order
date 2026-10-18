@@ -86,6 +86,32 @@ def parse_user(html: str) -> UserInfo | None:
     )
 
 
+def parse_confirm_message(html: str) -> str | None:
+    """The question of the ``dialogPanel`` shown after clicking ``Objednat``.
+
+    ``Opravdu si přejete objednat rybí nugetky … dne pátek 16. října 2026, …?``
+    Returns ``None`` when the page shows no dialog.
+    """
+    return _panel_text(html, "dialogPanel", "paneldlg__msg")
+
+
+def parse_info_message(html: str) -> str | None:
+    """The text of the ``infoPanel`` popup, e.g. after a successful order.
+
+    The site hides the popup with JavaScript, but it stays in the markup.
+    Returns ``None`` when the page has no popup.
+    """
+    return _panel_text(html, "infoPanel", "popupinfo__label")
+
+
+def _panel_text(html: str, panel_id: str, label_class: str) -> str | None:
+    panel = BeautifulSoup(html, "html.parser").find(id=panel_id)
+    if panel is None:
+        return None
+    label = panel.find(class_=label_class) or panel
+    return _clean(label.get_text(" ")) or None
+
+
 def _parse_credit(text: str) -> Decimal | None:
     """``Stav účtu:&nbsp;135 Kč`` -> ``Decimal("135")``."""
     match = _CREDIT_RE.search(_clean(text))

@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from scio_lunch_order.parser import ParseError, parse_menu, parse_user
+from scio_lunch_order.parser import (
+    ParseError,
+    parse_confirm_message,
+    parse_info_message,
+    parse_menu,
+    parse_user,
+)
 
 DATA = Path(__file__).parent / "data"
 
@@ -176,3 +182,24 @@ def test_user_credit_missing_or_unexpected():
 
 def test_no_user_on_menu_fragment():
     assert parse_user((DATA / "menu_ordered.html").read_text(encoding="utf-8")) is None
+
+
+def test_confirmation_question_is_read_from_the_dialog():
+    html = (DATA / "order_confirm.html").read_text(encoding="utf-8")
+    assert parse_confirm_message(html) == (
+        "Opravdu si přejete objednat rybí nugetky z tresky (1,4,3) "
+        "dne pátek 16. října 2026, jídelna Jídelna?"
+    )
+    assert parse_info_message(html) is None
+
+
+def test_info_popup_is_read_although_it_gets_hidden():
+    html = (DATA / "order_done.html").read_text(encoding="utf-8")
+    assert parse_info_message(html) == "Vaše objednávka byla úspěšně provedena"
+    assert parse_confirm_message(html) is None
+
+
+def test_plain_menu_has_no_dialog_or_popup():
+    html = (DATA / "menu_ordered.html").read_text(encoding="utf-8")
+    assert parse_confirm_message(html) is None
+    assert parse_info_message(html) is None

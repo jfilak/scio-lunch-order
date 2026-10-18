@@ -1,71 +1,26 @@
-"""The login sequence, exercised against a stub of the ASP.NET page.
+"""The login and order sequences, exercised against a stub of the ASP.NET page.
 
-No browser is involved: :class:`FakePage` models what the site does -- each
-postback replaces the page, so a different set of selectors becomes available.
+See :mod:`fake_site` for how the stub models the postbacks of the site.
 """
 
 import pytest
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from fake_site import (
+    CONFIRM_PAGE,
+    CONFIRM_YES,
+    MENU_PAGE,
+    ORDER_LINK,
+    ORDER_LINK_ID,
+    PASSWORD,
+    FakePage,
+    add_info_panel,
+    order_page,
+)
 
-from scio_lunch_order.browser import LoginError, LunchSite, LunchSiteError
+from scio_lunch_order.browser import LoginError, LunchSite, LunchSiteError, OrderError
+from scio_lunch_order.models import Action
+from scio_lunch_order.parser import parse_info_message, parse_menu
 
-PASSWORD = "s3cret"
-
-
-class FakeLocator:
-    def __init__(self, present: bool) -> None:
-        self._present = present
-
-    def count(self) -> int:
-        return 1 if self._present else 0
-
-
-class FakePage:
-    SELECTORS = {
-        # The anonymous page shows the public menu too.
-        "anonymous": {"a#cmdLoginUser", ".warea"},
-        "form": {"input#txtLoginA", "input#txtLoginB", "a#cmdLogin"},
-        "menu": {"a#cmdLogoutUser", ".warea"},
-    }
-
-    def __init__(self, state: str = "anonymous") -> None:
-        self.state = state
-        self.values: dict[str, str] = {}
-        self.calls: list[tuple[str, str]] = []
-
-    def _present(self, selector: str) -> bool:
-        return any(part.strip() in self.SELECTORS[self.state] for part in selector.split(","))
-
-    # -- the slice of the Playwright API that LunchSite uses ---------------
-
-    def goto(self, url: str, **_kwargs) -> None:
-        self.calls.append(("goto", url))
-
-    def locator(self, selector: str) -> FakeLocator:
-        return FakeLocator(self._present(selector))
-
-    def wait_for_selector(self, selector: str, **_kwargs) -> None:
-        if not self._present(selector):
-            raise PlaywrightTimeoutError(f"Timeout waiting for {selector}")
-
-    def fill(self, selector: str, value: str) -> None:
-        assert self._present(selector), f"filling a missing {selector}"
-        self.values[selector] = value
-        self.calls.append(("fill", selector))
-
-    def click(self, selector: str) -> None:
-        assert self._present(selector), f"clicking a missing {selector}"
-        self.calls.append(("click", selector))
-        if selector == "a#cmdLoginUser":
-            self.state = "form"
-        elif selector == "a#cmdLogin" and self.values.get("input#txtLoginB") == PASSWORD:
-            self.state = "menu"
-
-    def content(self) -> str:
-        return '<div class="warea"></div>' if self.state == "menu" else "<html></html>"
-
-    def inner_text(self, _selector: str) -> str:
-        return "Nesprávné jméno nebo heslo" if self.state == "form" else ""
+ORDER_ACTION = Action(label="Objednat", element_id=ORDER_LINK_ID)
 
 
 def make_site(state: str = "anonymous") -> tuple[LunchSite, FakePage]:
@@ -119,3 +74,48 @@ def test_menu_html_fails_when_the_menu_is_not_rendered():
 def test_page_property_requires_a_started_browser():
     with pytest.raises(LunchSiteError):
         LunchSite().page
+
+
+def test_order_clicks_the_dish_and_confirms_the_dialog():
+    page = order_page()
+    html = LunchSite(page=page).order(ORDER_ACTION, expected_date="16. října 2026")
+
+    assert page.calls == [("click", ORDER_LINK), ("click", CONFIRM_YES)]
+    assert parse_info_message(html) == "Vaše objednávka byla úspěšně provedena"
+    friday = next(day for day in parse_menu(html).days if day.label == "pátek 16. října")
+    assert friday.items[0].ordered
+
+
+def test_order_is_not_confirmed_when_the_dialog_names_another_day():
+    page = order_page(
+        confirm=CONFIRM_PAGE.replace("dne pátek 16. října 2026", "dne pondělí 19. října 2026")
+    )
+    with pytest.raises(OrderError) as error:
+        LunchSite(page=page).order(ORDER_ACTION, expected_date="16. října 2026")
+    assert "not about 16. října 2026" in str(error.value)
+    assert "pondělí 19. října 2026" in str(error.value)
+    assert page.calls == [("click", ORDER_LINK)]
+
+
+def test_order_refused_by_the_site_reports_its_message():
+    page = order_page(confirm=add_info_panel(MENU_PAGE, "Objednávky jsou uzavřeny"))
+    with pytest.raises(OrderError) as error:
+        LunchSite(page=page).order(ORDER_ACTION, expected_date="16. října 2026")
+    assert "Objednávky jsou uzavřeny" in str(error.value)
+    assert page.calls == [("click", ORDER_LINK)]
+
+
+def test_order_without_a_dialog_fails():
+    page = order_page()
+    page.transitions[("menu", ORDER_LINK)] = "menu"
+    with pytest.raises(OrderError) as error:
+        LunchSite(page=page).order(ORDER_ACTION, expected_date="16. října 2026")
+    assert "nothing was ordered" in str(error.value)
+
+
+def test_order_without_an_answer_to_the_confirmation_fails():
+    page = order_page()
+    page.transitions[("confirm", CONFIRM_YES)] = "confirm"
+    with pytest.raises(OrderError) as error:
+        LunchSite(page=page).order(ORDER_ACTION, expected_date="16. října 2026")
+    assert "may or may not be ordered" in str(error.value)

@@ -17,6 +17,9 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, Playwright, TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
+from .models import Action
+from .parser import parse_confirm_message, parse_info_message
+
 DEFAULT_URL = "https://skola.czszlin.cz:4434/iorders/"
 
 LOG = logging.getLogger(__name__)
@@ -35,6 +38,10 @@ class LunchSiteError(Exception):
 
 class LoginError(LunchSiteError):
     """The login sequence did not end on the menu page."""
+
+
+class OrderError(LunchSiteError):
+    """The site did not take the order the way the README describes."""
 
 
 @dataclass
@@ -57,6 +64,9 @@ class LunchSite:
     # the anonymous page shows the public menu in a ``.warea`` element as well.
     LOGOUT_LINK = "a#cmdLogoutUser"
     MENU = ".warea"
+    CONFIRM_YES = "a#btnDialogYes"
+    # The popup after an order; hidden by a script, so wait for it 'attached'.
+    INFO_PANEL = "#infoPanel"
 
     def __init__(self, options: BrowserOptions | None = None, page: Page | None = None) -> None:
         """``page`` lets a caller (or a test) drive an already open page."""
@@ -166,13 +176,60 @@ class LunchSite:
     def screenshot(self, path: str) -> None:
         self.page.screenshot(path=path, full_page=True)
 
+    def order(self, action: Action, expected_date: str) -> str:
+        """Click an ``Objednat`` link and answer ``Ano`` in the dialog.
+
+        The dialog repeats the dish and its date (``… dne pátek 16. října
+        2026 …``).  Unless the question contains ``expected_date`` it is left
+        unanswered, so nothing is ordered.  Returns the HTML of the page shown
+        after the order: the menu with the ``infoPanel`` popup.
+        """
+        LOG.info("clicking %s (%s)", action.label, action.element_id)
+        try:
+            html = self._postback(
+                f'a[id="{action.element_id}"]',
+                wait_for=f"{self.CONFIRM_YES}, {self.INFO_PANEL}",
+            )
+        except PlaywrightTimeoutError as exc:
+            raise OrderError("no confirmation dialog appeared, nothing was ordered") from exc
+
+        question = parse_confirm_message(html)
+        if question is None:
+            reason = parse_info_message(html) or "no confirmation dialog"
+            raise OrderError(f"the site refused the order: {reason}")
+        LOG.info("the site asks: %s", question)
+        if expected_date not in question:
+            raise OrderError(
+                f"the confirmation dialog is not about {expected_date}, "
+                f"nothing was ordered: {question}"
+            )
+
+        LOG.info("confirming the order")
+        try:
+            return self._postback(self.CONFIRM_YES, wait_for=self.INFO_PANEL)
+        except PlaywrightTimeoutError as exc:
+            raise OrderError(
+                "the site did not answer the confirmation -- check the menu, "
+                "the dish may or may not be ordered"
+            ) from exc
+
     # -- internals ---------------------------------------------------------
 
-    def _click(self, selector: str, wait_for: str) -> None:
+    def _click(self, selector: str, wait_for: str, state: str = "visible") -> None:
         """Click a postback link and wait for the re-rendered page."""
         self.page.wait_for_selector(selector, state="visible")
         self.page.click(selector)
-        self.page.wait_for_selector(wait_for, state="visible")
+        self.page.wait_for_selector(wait_for, state=state)
+
+    def _postback(self, selector: str, wait_for: str) -> str:
+        """Like :meth:`_click`, returning the HTML of the new page.
+
+        ``wait_for`` must not be on the current page, and the new page must be
+        complete before it is parsed, not just its first elements.
+        """
+        self._click(selector, wait_for=wait_for, state="attached")
+        self.page.wait_for_load_state("domcontentloaded")
+        return self.page.content()
 
     def _login_failure_hint(self) -> str:
         if self.page.locator(self.USERNAME_INPUT).count() == 0:

@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass(frozen=True)
@@ -153,3 +153,36 @@ class UserInfo:
             "full_name": self.full_name,
             "credit": str(self.credit) if self.credit is not None else None,
         }
+
+
+@dataclass(frozen=True)
+class OrderResult:
+    """What the ``order`` command did with the requested dish."""
+
+    ORDERED: ClassVar[str] = "ordered"
+    ALREADY_ORDERED: ClassVar[str] = "already-ordered"
+    DRY_RUN: ClassVar[str] = "dry-run"
+
+    status: str
+    day: Day
+    item: FoodItem
+    message: str | None = None
+    credit_before: Decimal | None = None
+    credit_after: Decimal | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "day": {
+                "label": self.day.label,
+                "date": self.day.date.isoformat() if self.day.date else None,
+            },
+            "item": self.item.to_dict(),
+            "message": self.message,
+            "credit_before": _decimal_to_str(self.credit_before),
+            "credit_after": _decimal_to_str(self.credit_after),
+        }
+
+
+def _decimal_to_str(value: Decimal | None) -> str | None:
+    return str(value) if value is not None else None

@@ -5,7 +5,7 @@ from __future__ import annotations
 import textwrap
 from decimal import Decimal
 
-from .models import Day, Menu, MenuOption, UserInfo
+from .models import Day, Menu, MenuOption, OrderResult, UserInfo
 
 ORDERED_MARK = "[x]"
 FREE_MARK = "[ ]"
@@ -56,6 +56,32 @@ def render_user(user: UserInfo, *, color: bool = True) -> str:
         credit = format_credit(user.credit)
         line += f", stav účtu: {paint('green' if user.credit > 0 else 'yellow', credit)}"
     return line + "\n"
+
+
+def render_order_result(result: OrderResult, *, color: bool = True, width: int = 78) -> str:
+    """Render the outcome of the ``order`` command."""
+    paint = _Palette(color)
+    headline = {
+        OrderResult.ORDERED: paint("green", "Objednáno"),
+        OrderResult.ALREADY_ORDERED: paint("green", "Už bylo objednáno"),
+        OrderResult.DRY_RUN: paint("yellow", "Neobjednáno (--dry-run)"),
+    }[result.status]
+    day = result.day
+    date = f" ({day.date.isoformat()})" if day.date else ""
+    lines = [f"{headline}: {paint('bold', day.label or '?')}{date}"]
+
+    item = result.item
+    number = f"{item.number}. " if item.number else ""
+    lines.extend(_wrap(f"{number}{item.label}", _INDENT, width, paint))
+    if result.message:
+        lines.extend(_wrap(result.message, _INDENT, width, paint, "dim"))
+
+    if result.credit_before is not None:
+        credit = format_credit(result.credit_before)
+        if result.credit_after is not None and result.credit_after != result.credit_before:
+            credit += f" → {format_credit(result.credit_after)}"
+        lines.append(f"Stav účtu: {credit}")
+    return "\n".join(lines) + "\n"
 
 
 def format_credit(amount: Decimal) -> str:

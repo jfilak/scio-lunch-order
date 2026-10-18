@@ -1,0 +1,6 @@
+- The file README.md explains the project
+- Sample HTML pages:
+  - samples/00_start_page.html
+  - samples/01_logged_in.html
+  - samples/02_confirm_order.html
+  - samples/03_popup_ordered.html

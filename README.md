@@ -7,9 +7,8 @@ The HTTP server returns ASP.NET HTML pages.
 
 ## Status
 
-Version 0.1 logs in, reads the weekly menu and prints it. Ordering is not wired
-up yet, but the data model is ready for it: every dish carries the id of its
-`Objednat` / `Zrušit objednávku` link and the `__doPostBack` target behind it.
+The app logs in, reads the weekly menu and prints it, and orders one dish for
+one day per run. Cancelling an order is not supported yet.
 
 ## Installation
 
@@ -71,6 +70,40 @@ Try it without any credentials:
 .venv/bin/scio-lunch --from-file sample.html
 ```
 
+### Usage: order
+
+```sh
+export SCIO_LUNCH_USER=jmeno
+export SCIO_LUNCH_PASSWORD=heslo      # optional, otherwise it asks
+.venv/bin/scio-lunch order --day "pátek 16. října" --item 3
+```
+
+```
+Objednáno: pátek 16. října (2026-10-16)
+    3. Rybí nugetky z tresky (1,4,3), bramborová kaše 7
+    Vaše objednávka byla úspěšně provedena
+Stav účtu: 1 700 Kč → 1 600 Kč
+```
+
+- `--day` is `2026-10-16`, `16.10.2026` or a label like `pátek 16. října` /
+  `16. října` (diacritics optional). A label is matched by its date, so
+  `úterý 13. října` finds the day the site calls `zítra, 13. října`; a weekday
+  that does not fit the date is an error.
+- `--item` is the dish number shown in the menu (`3`, `6`, ...).
+- `--dry-run` logs in and finds the dish, but does not order it. With
+  `--from-file` nothing is ordered either.
+- A dish that is already ordered is left alone (exit code 0); its `Objednat`
+  link is still on the page and clicking it again would most likely order a
+  second portion.
+- If another dish of that day is ordered, the command refuses (exit code 1).
+- The site's confirmation dialog must name the requested date, otherwise it is
+  not answered.
+- After the order the menu is read again; the run fails unless the dish is
+  marked as ordered.
+
+All the options listed above (`--json`, `--headed`, ...) work with `order` too.
+
+
 ## Development
 
 ```sh
@@ -78,14 +111,15 @@ Try it without any credentials:
 ```
 
 The tests need neither the network nor a browser: the parser runs against the
-saved pages in `tests/data`, and the login sequence runs against a stub page
-that mimics the postback behaviour of the site.
+saved pages in `tests/data`, and the login and order sequences run against a
+stub page (`tests/fake_site.py`) that mimics the postback behaviour of the site.
 
 ```
 src/scio_lunch_order/
     browser.py   Playwright session: open, log in, hand over the page HTML
-    parser.py    warea markup -> models
-    models.py    Menu / Day / MenuOption / FoodItem / Action
+    parser.py    warea markup -> models, dialog and popup texts
+    models.py    Menu / Day / MenuOption / FoodItem / Action / OrderResult
+    selection.py --day / --item -> the dish to order
     render.py    text output
     cli.py       argument parsing, JSON output
 ```
@@ -98,6 +132,23 @@ src/scio_lunch_order/
 3. Fill the element input id=txtLoginA with user name
 3. Fill the element input id=txtLoginB with password
 5. Click the element a id=cmdLogin - it actually uses href=javascript
+
+## Ordering
+
+1. Click the button labeled with "Objednat" on the menu item line. The order
+   button's id is like
+   `repeaterDays_ctl${day index}_repeaterFoodType_ctl${day item index}_repeaterFood_ctl00_btnFood`.
+   The indexes are positions on the current page, so the app clicks the id it
+   has just parsed instead of building one.
+2. Wait until the dialog panel appears - it is a div element with the id
+   `dialogPanel` and contains the button with the id `btnDialogYes`. The
+   question in `.paneldlg__msg` names the dish and the date:
+   `Opravdu si přejete objednat rybí nugetky … dne pátek 16. října 2026, …?`
+3. Clicking `btnDialogYes` reloads the menu with a popup: the div element with
+   the id `infoPanel` (`Vaše objednávka byla úspěšně provedena`), which a script
+   hides by setting the css style display to 'none'.
+4. An ordered dish keeps its `Objednat` button and gets a `Zrušit objednávku`
+   button next to it.
 
 ## Page structure description
 
