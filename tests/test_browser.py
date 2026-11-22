@@ -5,21 +5,29 @@ See :mod:`fake_site` for how the stub models the postbacks of the site.
 
 import pytest
 from fake_site import (
+    CANCEL_CONFIRM_PAGE,
+    CANCEL_LINK,
+    CANCEL_LINK_ID,
     CONFIRM_PAGE,
     CONFIRM_YES,
     MENU_PAGE,
+    ORDERED_MENU_PAGE,
     ORDER_LINK,
     ORDER_LINK_ID,
     PASSWORD,
     CanteenPage,
     FakePage,
     add_info_panel,
+    cancel_link,
+    cancel_page,
+    link_id,
     order_link,
     order_page,
 )
 
 from scio_lunch_order.browser import (
     BrowserOptions,
+    CancelError,
     LoginError,
     LunchSite,
     LunchSiteError,
@@ -29,6 +37,8 @@ from scio_lunch_order.models import Action
 from scio_lunch_order.parser import parse_info_message, parse_menu
 
 ORDER_ACTION = Action(label="Objednat", element_id=ORDER_LINK_ID)
+CANCEL_ACTION = Action(label="Zrušit objednávku", element_id=CANCEL_LINK_ID)
+MONDAY = "23. listopadu 2026"
 
 
 def make_site(state: str = "anonymous") -> tuple[LunchSite, FakePage]:
@@ -157,3 +167,62 @@ def test_next_order_is_not_answered_by_the_popup_of_the_previous_one():
     html = site.order(Action("Objednat", monday_6), expected_date="19. října 2026")
     monday = next(day for day in parse_menu(html).days if day.label == "pondělí 19. října")
     assert [item.ordered for item in monday.items] == [False, True]
+
+
+def test_cancel_clicks_the_cancel_link_and_confirms_the_dialog():
+    page = cancel_page()
+    html = LunchSite(page=page).cancel(CANCEL_ACTION, expected_date=MONDAY)
+
+    assert page.calls == [("click", CANCEL_LINK), ("click", CONFIRM_YES)]
+    assert parse_info_message(html) == "Vaše objednávka byla zrušena"
+    monday = parse_menu(html).days[0]
+    assert monday.date.day == 23
+    assert not monday.ordered
+
+
+def test_cancel_is_not_confirmed_when_the_dialog_is_not_a_cancellation():
+    # An order dialog, whatever it says, must not be answered by 'cancel'.
+    order_dialog = CANCEL_CONFIRM_PAGE.replace(
+        '<div class="paneldlg__header">Zrušení objednávky</div>',
+        '<div class="paneldlg__header">Objednání stravy</div>',
+    )
+    page = cancel_page(confirm=order_dialog)
+    with pytest.raises(CancelError) as error:
+        LunchSite(page=page).cancel(CANCEL_ACTION, expected_date=MONDAY)
+    assert "not headed 'Zrušení objednávky' but 'Objednání stravy'" in str(error.value)
+    assert page.calls == [("click", CANCEL_LINK)]
+
+
+def test_cancel_is_not_confirmed_when_the_dialog_names_another_day():
+    page = cancel_page(
+        confirm=CANCEL_CONFIRM_PAGE.replace("dne pondělí 23. listopadu", "dne úterý 24. listopadu")
+    )
+    with pytest.raises(CancelError) as error:
+        LunchSite(page=page).cancel(CANCEL_ACTION, expected_date=MONDAY)
+    assert "not about 23. listopadu 2026, nothing was cancelled" in str(error.value)
+    assert page.calls == [("click", CANCEL_LINK)]
+
+
+def test_cancel_refused_by_the_site_reports_its_message():
+    page = cancel_page(confirm=add_info_panel(ORDERED_MENU_PAGE, "Objednávku nelze zrušit"))
+    with pytest.raises(CancelError, match="refused the cancellation: Objednávku nelze zrušit"):
+        LunchSite(page=page).cancel(CANCEL_ACTION, expected_date=MONDAY)
+    assert page.calls == [("click", CANCEL_LINK)]
+
+
+def test_cancel_without_an_answer_to_the_confirmation_fails():
+    page = cancel_page()
+    page.transitions[("confirm", CONFIRM_YES)] = "confirm"
+    with pytest.raises(CancelError, match="may or may not be cancelled"):
+        LunchSite(page=page).cancel(CANCEL_ACTION, expected_date=MONDAY)
+
+
+def test_next_cancellation_is_not_answered_by_the_popup_of_the_previous_one():
+    page = CanteenPage(ORDERED_MENU_PAGE)
+    site = LunchSite(page=page)
+    site.cancel(CANCEL_ACTION, expected_date=MONDAY)
+    assert parse_info_message(page.content()) == "Vaše objednávka byla zrušena"
+
+    tuesday_3 = Action("Zrušit objednávku", link_id(cancel_link(1, 0)))
+    html = site.cancel(tuesday_3, expected_date="24. listopadu 2026")
+    assert [day.ordered for day in parse_menu(html).days] == [False, False, True, True, True]

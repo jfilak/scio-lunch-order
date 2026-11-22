@@ -1,0 +1,385 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>iOrders</title>
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1250">
+<meta name="GENERATOR" content="Microsoft Visual Studio .NET 7.1">
+<meta name="CODE_LANGUAGE" content="Visual Basic .NET 7.1">
+<meta name="vs_defaultClientScript" content="JavaScript">
+<meta name="vs_targetSchema" content="http://schemas.microsoft.com/intellisense/ie5">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="X-UA-Compatible" content="IE=Edge">
+<meta name="viewport" content="width=device-width, user-scalable=yes">
+<link rel="shortcut icon" href="favicon.ico">
+<link href="css/menu_v2.5.min.css" type="text/css" rel="stylesheet">
+<link href="css/main_v2.18.min.css" type="text/css" rel="stylesheet">
+<link href="css/tooltip_v2.4.min.css" type="text/css" rel="stylesheet">
+<link href="css/mainList_v1.6.min.css" type="text/css" rel="stylesheet">
+<link href="css/rating_v1.4.min.css" type="text/css" rel="stylesheet">
+<link href="css/m.menu_v1.0.min.css" type="text/css" rel="stylesheet">
+<link href="css/m.main_v1.5.min.css" type="text/css" rel="stylesheet">
+<script type="text/javascript" src="jscript/main_v2.6.min.js">
+</script>
+<script type="text/javascript" src="jscript/jquery-1.12.3.min.js">
+</script>
+<script type="text/javascript" src="jscript/tooltip_v2.2.min.js">
+</script>
+<script type="text/javascript" src="jscript/autopostback_v1.2.min.js">
+</script>
+<script type="text/javascript">$(document).ready(function(){screenshotPreview();InitializeTimer();});</script>
+</head>
+<body>
+<form name="Form1" method="post" action="./" id="Form1">
+<div>
+<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="">
+<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="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">
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+var theForm = document.forms['Form1'];
+if (!theForm) {
+    theForm = document.Form1;
+}
+function __doPostBack(eventTarget, eventArgument) {
+    if (!theForm.onsubmit || (theForm.onsubmit() != false)) {
+        theForm.__EVENTTARGET.value = eventTarget;
+        theForm.__EVENTARGUMENT.value = eventArgument;
+        theForm.submit();
+    }
+}
+//]]>
+</script>
+
+
+<script src="/iorders/WebResource.axd?d=txj9pdk2xvEZSYLqTVzEIlPxihxvRrHlhpsSNrWRcrUWxyg07Bbv_L7AiXs2adVZvrSUS0pzMqHvlXZqHDQtR06Dp81M0RUbvNYm39hAiVM1&amp;t=638901845280000000" type="text/javascript">
+</script>
+
+
+<script src="/iorders/ScriptResource.axd?d=6tRJj6J_2wcSIf4hDbHq37924lxHKA9aRASQlSiru58avaEucHdv58NlR2Si-pOqcnZw6NbKqWXj903onbbwg37LGljW5OBM-LO7P8-xokRXQUKPJqxVxk5l_EfVfPyVqKlYDjAHexsvYi1h2p12TVjDmf405uvEGNlWNwqiG61iFpyf4R45jgNrnt9KjZIr0&amp;t=32e5dfca" type="text/javascript">
+</script>
+<script type="text/javascript">
+//<![CDATA[
+if (typeof(Sys) === 'undefined') throw new Error('Nepodařilo se načíst rozhraní Framework ASP.NET Ajax na straně klienta.');
+//]]>
+</script>
+
+<script src="/iorders/ScriptResource.axd?d=7fUlEB4y6qbA0aIAJkV2Nap_qo4ppZi0-zU0HY8EzdKImyoTadfa8P0ekqyXKi3w87nUIVRNk59l6HzxtzQcfVQdu-uHOcnEl5ls0djX26TYOSP0e25ZaTNbFLhLYzUsvB6JyIP0j9VPBdsSOpDb1Z1v5-oTFMU1VSKXbrdz7uUsd4YioH3qotAsJsKCWeHE0&amp;t=32e5dfca" type="text/javascript">
+</script>
+<div>
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="FEA76AC5">
+	<input type="hidden" name="__SCROLLPOSITIONX" id="__SCROLLPOSITIONX" value="0">
+	<input type="hidden" name="__SCROLLPOSITIONY" id="__SCROLLPOSITIONY" value="0">
+	<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="/wEdABLspa1S95HbWPp8pGzUty3BKWjaiyowPEY4h5WVk/dUQxDNG7+KERBL1VdspNfmdkswJdSjuEAqmVFhaEmi9FMvODhPRfzv9jGu5e9i3+qaL10ZnJXkZB/YCzAy3ntVO0/cmT5bB41QsqNwzSBS2UiUpshOONvud3BTtfbM9S4LL9Yaji0b5PXnMqcsF2OSSsdxP/GuxQSuzTkgQtmLCG/2pUejfZt7oqIKD04hFBlDkO/XIr1zQLiuRMaYmaqhQJML44n9cZ5IPiFwgrPYT0UEvbtzoM2apjWzTbt/oLQQyiLjFW8z9Q9PBjYLwBbX1nDZo20o7WL7tPIW1C5VsVkFhE1vwpZH17i4LB3Y+HfTparRHJqb6hAyhkalr07vBNO7ABupfNpXwbwm+44iG5WRWuzmeNkuAH3lLLYeu5PWiw==">
+</div>
+<input name="txtHash" type="text" id="txtHash" style="display:none">
+<input name="txtcountdown" type="text" value="0" id="txtcountdown" style="display:none">
+<div class="sticky">
+<div class="harea">
+<div class="htop">
+<div class="htop__lblock">
+<span id="actualday">Čtvrtek&nbsp;</span>
+<span id="actualdate" class="lblock__date">22. října&nbsp;</span>
+</div>
+<div class="htop__rblock">
+<div class="rblock__cmf">
+<img src="images/logo_v5.png" alt="Cominfo, a.s." height="14" width="60">
+</div>
+</div>
+</div>
+<div class="hsec boall">
+<div class="hsec__lblock">
+<div class="hslblock__logo">
+<img id="cplogo" src="images/cplogo2.jpg" alt="logo" style="height:50px;width:50px;border-width:0px;">
+</div>
+<div class="hslblock__cardpay">
+<span class="cardpay--title">CARDPAY</span>
+<br>
+<span class="cardpay--iorders">Intranetové objednávaní stravy</span>
+<span id="lblSysInfo" class="cardpay--version">2.12.1</span>
+</div>
+</div>
+<div class="hsec__rmblock">
+<div class="hsec__mmenu" onclick="mobileMenu(this)">
+<div class="mmenu--bar1">
+</div>
+<div class="mmenu--bar2">
+</div>
+<div class="mmenu--bar3">
+</div>
+</div>
+<div class="hsec__mmenutext">Menu</div>
+</div>
+<div class="hsec__usrblock">
+<div>
+<span id="lblHeadr" class="usrblock__user">Vilém Filák</span>
+</div>
+<div>
+<span id="lblUserSpec" class="usrblock__userparam">Stav účtu:&nbsp;700 Kč</span>
+</div>
+<div class="usrblock__logout">
+<span class="logout--lbl">
+<a id="cmdLogoutUser" href="javascript:__doPostBack('cmdLogoutUser','')">Odhlásit</a>
+</span>
+<input type="image" name="cmdLogoutUserImg" id="cmdLogoutUserImg" title="Odhlásit" src="images/logout4.png" alt="logout" style="height:10px;width:10px;border-width:0px;">
+</div>
+</div>
+</div>
+<div id="mwraper" class="menuwrapper">
+<a class="active " href="#" onclick="javascript:__doPostBack('mainMenu','cmdMenu')">Jídelníček</a>
+<a href="#" onclick="javascript:__doPostBack('mainMenu','cmdOrders')">Seznam objednávek</a>
+<a href="#" onclick="javascript:__doPostBack('mainMenu','cmdHistory')">Historie objednávek</a>
+<a href="#" onclick="javascript:__doPostBack('mainMenu','cmdDetailedReport')">Detailní historie účtu</a>
+<a href="#" onclick="javascript:__doPostBack('mainMenu','cmdPassword')">Změna hesla</a>
+<a href="#" onclick="javascript:__doPostBack('mainMenu','cmdSettings')">Nastavení</a>
+<a class=" mobilemenu" href="#" onclick="javascript:__doPostBack('mainMenu','cmdLogout')">Odhlásit</a>
+</div>
+</div>
+</div>
+<div>
+<div class="warea">
+<div class="fday bobt boto">zítra,  23. října<a href="#" id="mnu23.10.2026 0:00:00">
+</a>
+</div>
+<div class="fheader bobt boto">
+<div class="ftype">Oběd 3</div>
+<div class="fheader--soupl">
+<img src="images/soup.png" alt="soup" style="height:14px;width:14px;margin:2px 5px 0;">Polévka mrkvová s jáhly 1,7,9<span class="allergen itemallergen"> (9-celer)</span>
+</div>
+</div>
+<div class="fblock">
+<div class="frowinfo">&nbsp; <div class="finfo__count">&nbsp;</div>
+<div class="finfo__state">
+<img src="./images/greenpoint.png" width="15" height="15" title="Objednáno">
+</div>
+</div>
+<div class="fdatashort">
+<div class="fdata__nmb">3.</div>
+<div class="fdata__detail">
+<div class="food__detail">
+<div class="food--label">Kotlíkový guláše z hovězího a vepřového masa s bramborem 1,7,9,, pečivo (1/1)</div>
+</div>
+</div>
+</div>
+<div class="fcmd">
+<div class="mfrowinfo mfdata__single">&nbsp; <div class="finfo__count">&nbsp;</div>
+<div class="finfo__state">
+<img src="./images/greenpoint.png" width="15" height="15" title="Objednáno">
+</div>
+</div>
+<a id="repeaterDays_ctl00_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood" class="button tbutton tbutton1" href="javascript:__doPostBack('repeaterDays$ctl00$repeaterFoodType$ctl00$repeaterFood$ctl00$btnFood','')">Objednat</a>
+<a id="repeaterDays_ctl00_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood2" class="button tbutton tbutton2" href="javascript:__doPostBack('repeaterDays$ctl00$repeaterFoodType$ctl00$repeaterFood$ctl00$btnFood2','')">Zrušit objednávku</a>
+</div>
+</div>
+<div class="fheader bobt boto">
+<div class="ftype">Oběd 6</div>
+<div class="fheader--soupl">
+<img src="images/soup.png" alt="soup" style="height:14px;width:14px;margin:2px 5px 0;">Polévka mrkvová s jáhly 1,7,9<span class="allergen itemallergen"> (9-celer)</span>
+</div>
+</div>
+<div class="fblock">
+<div class="frowinfo">&nbsp;       </div>
+<div class="fdatalong">
+<div class="fdata__nmb">6.</div>
+<div class="fdata__detail">
+<div class="food__detail">
+<div class="food--label">Halušky se zelím a slaninou /1,3,7/</div>
+</div>
+</div>
+</div>
+<div class="fcmd">
+<div class="mfrowinfo mfdata__single">&nbsp;       </div>
+<a id="repeaterDays_ctl00_repeaterFoodType_ctl01_repeaterFood_ctl00_btnFood" class="button tbutton tbutton1" href="javascript:__doPostBack('repeaterDays$ctl00$repeaterFoodType$ctl01$repeaterFood$ctl00$btnFood','')">Objednat</a>
+</div>
+</div>
+<div class="fday bobt boto">pondělí 26. října<a href="#" id="mnu26.10.2026 0:00:00">
+</a>
+</div>
+<div class="fheader bobt boto">
+<div class="ftype">Oběd 3</div>
+<div class="fheader--soupl">
+<img src="images/soup.png" alt="soup" style="height:14px;width:14px;margin:2px 5px 0;">Polévka ze zeleného  hrášku /3,1,9,7/</div>
+</div>
+<div class="fblock">
+<div class="frowinfo">&nbsp; <div class="finfo__count">&nbsp;</div>
+<div class="finfo__state">
+<img src="./images/greenpoint.png" width="15" height="15" title="Objednáno">
+</div>
+</div>
+<div class="fdatashort">
+<div class="fdata__nmb">3.</div>
+<div class="fdata__detail">
+<div class="food__detail">
+<div class="food--label">Krupicová kaše, ovoce /1,7/</div>
+</div>
+</div>
+</div>
+<div class="fcmd">
+<div class="mfrowinfo mfdata__single">&nbsp; <div class="finfo__count">&nbsp;</div>
+<div class="finfo__state">
+<img src="./images/greenpoint.png" width="15" height="15" title="Objednáno">
+</div>
+</div>
+<a id="repeaterDays_ctl01_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood" class="button tbutton tbutton1" href="javascript:__doPostBack('repeaterDays$ctl01$repeaterFoodType$ctl00$repeaterFood$ctl00$btnFood','')">Objednat</a>
+<a id="repeaterDays_ctl01_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood2" class="button tbutton tbutton2" href="javascript:__doPostBack('repeaterDays$ctl01$repeaterFoodType$ctl00$repeaterFood$ctl00$btnFood2','')">Zrušit objednávku</a>
+</div>
+</div>
+<div class="fheader bobt boto">
+<div class="ftype">Oběd 6</div>
+<div class="fheader--soupl">
+<img src="images/soup.png" alt="soup" style="height:14px;width:14px;margin:2px 5px 0;">Polévka ze zeleného  hrášku /3,1,9,7/</div>
+</div>
+<div class="fblock">
+<div class="frowinfo">&nbsp;       </div>
+<div class="fdatalong">
+<div class="fdata__nmb">6.</div>
+<div class="fdata__detail">
+<div class="food__detail">
+<div class="food--label">Těstoviny arrabbiata /rajčativá omáčka, anglická slanina/parmezán, ovoce, /1,3,7</div>
+</div>
+</div>
+</div>
+<div class="fcmd">
+<div class="mfrowinfo mfdata__single">&nbsp;       </div>
+<a id="repeaterDays_ctl01_repeaterFoodType_ctl01_repeaterFood_ctl00_btnFood" class="button tbutton tbutton1" href="javascript:__doPostBack('repeaterDays$ctl01$repeaterFoodType$ctl01$repeaterFood$ctl00$btnFood','')">Objednat</a>
+</div>
+</div>
+<div class="fday bobt boto">úterý 27. října<a href="#" id="mnu27.10.2026 0:00:00">
+</a>
+</div>
+<div class="fheader bobt boto">
+<div class="ftype">Oběd 3</div>
+<div class="fheader--soupl">
+<img src="images/soup.png" alt="soup" style="height:14px;width:14px;margin:2px 5px 0;">Vývar s játrovou rýží a těstovinou /3,1,9,7/</div>
+</div>
+<div class="fblock">
+<div class="frowinfo">&nbsp; <div class="finfo__count">&nbsp;</div>
+<div class="finfo__state">
+<img src="./images/greenpoint.png" width="15" height="15" title="Objednáno">
+</div>
+</div>
+<div class="fdatashort">
+<div class="fdata__nmb">3.</div>
+<div class="fdata__detail">
+<div class="food__detail">
+<div class="food--label">Segedínský guláš se smetanou 1,7,9<span class="allergen itemallergen"> (1-lepek, 10-hořčice, 12-oxid siřičitý a siřičitany)</span>, houskový knedlík 1,3,7<span class="allergen itemallergen"> (1-lepek, 3-vejce, 7-mléko)</span>
+</div>
+</div>
+</div>
+</div>
+<div class="fcmd">
+<div class="mfrowinfo mfdata__single">&nbsp; <div class="finfo__count">&nbsp;</div>
+<div class="finfo__state">
+<img src="./images/greenpoint.png" width="15" height="15" title="Objednáno">
+</div>
+</div>
+<a id="repeaterDays_ctl02_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood" class="button tbutton tbutton1" href="javascript:__doPostBack('repeaterDays$ctl02$repeaterFoodType$ctl00$repeaterFood$ctl00$btnFood','')">Objednat</a>
+<a id="repeaterDays_ctl02_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood2" class="button tbutton tbutton2" href="javascript:__doPostBack('repeaterDays$ctl02$repeaterFoodType$ctl00$repeaterFood$ctl00$btnFood2','')">Zrušit objednávku</a>
+</div>
+</div>
+<div class="fheader bobt boto">
+<div class="ftype">Oběd 6</div>
+<div class="fheader--soupl">
+<img src="images/soup.png" alt="soup" style="height:14px;width:14px;margin:2px 5px 0;">Vývar s játrovou rýží a těstovinou /3,1,9,7/</div>
+</div>
+<div class="fblock">
+<div class="frowinfo">&nbsp;       </div>
+<div class="fdatalong">
+<div class="fdata__nmb">6.</div>
+<div class="fdata__detail">
+<div class="food__detail">
+<div class="food--label">Kuskus s pečenou zeleninou, cizrnou, balkánským sýrem /bez masa/ 1,7</div>
+</div>
+</div>
+</div>
+<div class="fcmd">
+<div class="mfrowinfo mfdata__single">&nbsp;       </div>
+<a id="repeaterDays_ctl02_repeaterFoodType_ctl01_repeaterFood_ctl00_btnFood" class="button tbutton tbutton1" href="javascript:__doPostBack('repeaterDays$ctl02$repeaterFoodType$ctl01$repeaterFood$ctl00$btnFood','')">Objednat</a>
+</div>
+</div>
+<div class="fday bobt boto">čtvrtek 29. října<a href="#" id="mnu29.10.2026 0:00:00">
+</a>
+</div>
+<div class="fheader bobt boto">
+<div class="ftype">Oběd 3</div>
+<div class="fheader--soupl">
+<img src="images/soup.png" alt="soup" style="height:14px;width:14px;margin:2px 5px 0;">Polévka rajská s kapáním (obsahuje 1,3,7)</div>
+</div>
+<div class="fblock">
+<div class="frowinfo">&nbsp; <div class="finfo__count">&nbsp;</div>
+<div class="finfo__state">
+<img src="./images/greenpoint.png" width="15" height="15" title="Objednáno">
+</div>
+</div>
+<div class="fdatashort">
+<div class="fdata__nmb">3.</div>
+<div class="fdata__detail">
+<div class="food__detail">
+<div class="food--label">Bramborové knedlíky plněné masem, dušený špenát /1,3,7/</div>
+</div>
+</div>
+</div>
+<div class="fcmd">
+<div class="mfrowinfo mfdata__single">&nbsp; <div class="finfo__count">&nbsp;</div>
+<div class="finfo__state">
+<img src="./images/greenpoint.png" width="15" height="15" title="Objednáno">
+</div>
+</div>
+<a id="repeaterDays_ctl03_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood" class="button tbutton tbutton1" href="javascript:__doPostBack('repeaterDays$ctl03$repeaterFoodType$ctl00$repeaterFood$ctl00$btnFood','')">Objednat</a>
+<a id="repeaterDays_ctl03_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood2" class="button tbutton tbutton2" href="javascript:__doPostBack('repeaterDays$ctl03$repeaterFoodType$ctl00$repeaterFood$ctl00$btnFood2','')">Zrušit objednávku</a>
+</div>
+</div>
+<div class="fday bobt boto">pátek 30. října<a href="#" id="mnu30.10.2026 0:00:00">
+</a>
+</div>
+<div class="fheader bobt boto">
+<div class="ftype">Oběd 3</div>
+<div class="fheader--soupl">
+<img src="images/soup.png" alt="soup" style="height:14px;width:14px;margin:2px 5px 0;">polévka brokolicová 1,3,7,9</div>
+</div>
+<div class="fblock">
+<div class="frowinfo">&nbsp; <div class="finfo__count">&nbsp;</div>
+<div class="finfo__state">
+<img src="./images/greenpoint.png" width="15" height="15" title="Objednáno">
+</div>
+</div>
+<div class="fdatashort">
+<div class="fdata__nmb">3.</div>
+<div class="fdata__detail">
+<div class="food__detail">
+<div class="food--label">Rybí  treska  (4,7), bramborová kaše 7<span class="allergen itemallergen"> (7-mléko)</span>, kompot</div>
+</div>
+</div>
+</div>
+<div class="fcmd">
+<div class="mfrowinfo mfdata__single">&nbsp; <div class="finfo__count">&nbsp;</div>
+<div class="finfo__state">
+<img src="./images/greenpoint.png" width="15" height="15" title="Objednáno">
+</div>
+</div>
+<a id="repeaterDays_ctl04_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood" class="button tbutton tbutton1" href="javascript:__doPostBack('repeaterDays$ctl04$repeaterFoodType$ctl00$repeaterFood$ctl00$btnFood','')">Objednat</a>
+<a id="repeaterDays_ctl04_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood2" class="button tbutton tbutton2" href="javascript:__doPostBack('repeaterDays$ctl04$repeaterFoodType$ctl00$repeaterFood$ctl00$btnFood2','')">Zrušit objednávku</a>
+</div>
+</div>
+</div>
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+
+var callBackFrameUrl='/iorders/WebResource.axd?d=V5r72NCpXv-AVcMZlcRMBRNtViPXlSSjrYG68NwwnknZzjcbwP3SX0KakBt76mm7_LIkppsfvpkxUjoXhzoxUKgXo1MhGk1XYmWFBhVxKFQ1&t=638901845280000000';
+WebForm_InitCallback();
+theForm.oldSubmit = theForm.submit;
+theForm.submit = WebForm_SaveScrollPositionSubmit;
+
+theForm.oldOnSubmit = theForm.onsubmit;
+theForm.onsubmit = WebForm_SaveScrollPositionOnSubmit;
+
+theForm.oldOnLoad = window.onload;
+window.onload = WebForm_RestoreScrollPosition;
+//]]>
+</script>
+</form>
+</body>
+</html>

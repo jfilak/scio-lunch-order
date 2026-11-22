@@ -8,8 +8,8 @@ The HTTP server returns ASP.NET HTML pages.
 ## Status
 
 The app logs in, reads the weekly menu and prints it, orders one dish for one
-day, or orders every day of the menu in one run. Cancelling an order is not
-supported yet.
+day, or orders every day of the menu in one run. It cancels the order of one
+day, or every order of the menu.
 
 ## Installation
 
@@ -149,6 +149,58 @@ day and its dishes and returns one of them, or `None`. Only the interactive
 one exists now; a list of preferred dishes or an AI deciding between meat and
 vegetarian are meant to be further choosers.
 
+### Usage: cancel
+
+```sh
+.venv/bin/scio-lunch cancel --day "pondělí 23. listopadu"
+```
+
+```
+Zrušeno: zítra, 23. listopadu (2026-11-23)
+    3. Bratislavské vepřové plecko /maso kostičky/ s hráškem, mrkví, smetanou
+      1,7,9, těstoviny 1,3
+    Vaše objednávka byla zrušena
+Stav účtu: 1 600 Kč → 1 700 Kč
+```
+
+- `--day` works as for `order`. The dish ordered that day is cancelled.
+- `--item` is needed only if more dishes of the day are ordered; otherwise the
+  command refuses (exit code 1).
+- A day (or `--item`) with nothing ordered is left alone (exit code 0).
+- An ordered dish without the `Zrušit objednávku` link (e.g. after the
+  deadline) cannot be cancelled (exit code 1).
+- The site's dialog must be headed `Zrušení objednávky` and name the requested
+  date, otherwise it is not answered.
+- After the cancellation the menu is read again; the run fails unless the dish
+  is no longer marked as ordered.
+- `--dry-run` logs in and finds the dish, but does not cancel it; so does
+  `--from-file`.
+
+### Usage: cancel all
+
+```sh
+.venv/bin/scio-lunch cancel-all --dry-run    # see what would be cancelled
+.venv/bin/scio-lunch cancel-all
+```
+
+```
+Celý jídelníček: zrušeno: 4, nebylo objednáno: 1
+
+Nebylo objednáno: zítra, 23. listopadu (2026-11-23)
+
+Zrušeno: úterý 24. listopadu (2026-11-24)
+    3. Taštičky z bramborového těsta plněné povidly, strouhaný tvaroh 1,7,8,9
+...
+Stav účtu: 1 700 Kč → 2 100 Kč
+```
+
+- Every ordered dish of the menu is cancelled. Nothing is asked, so try
+  `--dry-run` first.
+- An order that cannot be cancelled any more is skipped.
+- The dishes are cancelled strictly one after another, at a human pace, like
+  `order-all` orders them; the first failure of the site stops the run and the
+  exit code is 1.
+
 
 ## Development
 
@@ -157,17 +209,18 @@ vegetarian are meant to be further choosers.
 ```
 
 The tests need neither the network nor a browser: the parser runs against the
-saved pages in `tests/data`, and the login and order sequences run against a
-stub page (`tests/fake_site.py`) that mimics the postback behaviour of the site
--- including a canteen that takes any number of orders in a row.
+saved pages in `tests/data`, and the login, order and cancel sequences run
+against a stub page (`tests/fake_site.py`) that mimics the postback behaviour
+of the site -- including a canteen that takes any number of orders and
+cancellations in a row.
 
 ```
 src/scio_lunch_order/
     browser.py   Playwright session: open, log in, hand over the page HTML
     parser.py    warea markup -> models, dialog and popup texts
     models.py    Menu / Day / MenuOption / FoodItem / Action / OrderResult
-    selection.py --day / --item -> the dish to order
-    ordering.py  order one dish; choose and order the dishes of every day
+    selection.py --day / --item -> the dish to order or cancel
+    ordering.py  order / cancel one dish; plan and carry out the whole menu
     choosers.py  how a dish is picked on a day with more of them
     render.py    text output
     cli.py       argument parsing, JSON output
@@ -200,6 +253,26 @@ src/scio_lunch_order/
    instead of just looking for `infoPanel`.
 4. An ordered dish keeps its `Objednat` button and gets a `Zrušit objednávku`
    button next to it.
+
+## Canceling order
+
+1. The ordered dish for the day has the button labeled with "Zrušit objednávku". The cancel button's id is like:
+   `repeaterDays_ctl${day index}_repeaterFoodType_ctl${day item index}_repeaterFood_ctl00_btnFood2`
+2. Upon clicking the cancel button, the html page displays dialog with the id
+   `dialogPanel`. The dialog panel contains the button with id `btnDialogYes`
+   in the div with the class `paneldlg__buttons`. The dialog header should be
+   `Zrušení objednávky` in the text of the div with the class
+   `paneldlg__header` (an order dialog has `Objednání stravy` there). The
+   question in `.paneldlg__msg` names the dish and the date:
+   `Opravdu si přejete zrušit objednávku <br>bratislavské … dne pondělí 23. listopadu 2026, …?`
+3. Clicking `btnDialogYes` reloads the menu with a popup: the div element with
+   the id `infoPanel` (`Vaše objednávka byla zrušena`), which a script
+   hides by setting the css style display to 'none'. The hidden popup stays in
+   the page, so before the next order the app waits for the next page to load
+   instead of just looking for `infoPanel`.
+4. A cancelled dish loses its `Zrušit objednávku` button and the green
+   `Objednáno` mark; its `Objednat` button stays. (Assumed: there is no saved
+   page from after a cancellation yet.)
 
 ## Page structure description
 

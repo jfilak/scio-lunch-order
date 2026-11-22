@@ -1,19 +1,38 @@
-"""``order-all``: choosing the dishes, then ordering them one after another.
+"""``order-all`` and ``cancel-all``: planning, then one dish after another.
 
-The menu is ``order_confirm.html``: 13. and 14. října have dish 3 ordered,
-16., 21. and 22. offer one dish, the other days dishes 3 and 6.
+The menu of ``order-all`` is ``order_confirm.html``: 13. and 14. října have
+dish 3 ordered, 16., 21. and 22. offer one dish, the other days dishes 3 and 6.
+The menu of ``cancel-all`` is ``cancel_confirm.html``: dish 3 is ordered on
+every day from 23. to 27. listopadu.
 """
 
 from datetime import date
 
 import pytest
-from fake_site import CONFIRM_YES, MENU_PAGE, CanteenPage, order_link
+from fake_site import (
+    CONFIRM_YES,
+    MENU_PAGE,
+    ORDERED_MENU_PAGE,
+    CanteenPage,
+    add_info_panel,
+    cancel_link,
+    cancel_page,
+    link_id,
+    order_link,
+)
 
-from scio_lunch_order.browser import LunchSite
+from scio_lunch_order.browser import CancelError, LunchSite
 from scio_lunch_order.models import Action, FoodItem, OrderResult
-from scio_lunch_order.ordering import choose_dishes, order_chosen
+from scio_lunch_order.ordering import (
+    cancel_chosen,
+    cancel_dish,
+    choose_dishes,
+    order_chosen,
+    order_dish,
+    plan_cancellations,
+)
 from scio_lunch_order.parser import parse_menu
-from scio_lunch_order.selection import SelectionError
+from scio_lunch_order.selection import SelectionError, parse_day_spec
 
 
 class ListChooser:
@@ -139,3 +158,112 @@ def test_a_day_ordered_meanwhile_fails_alone():
     assert summary(results)[2] == (15, "failed", "6")
     assert "already has dish 3 ordered" in results[2].message
     assert summary(results)[3] == (16, "ordered", "3")
+
+
+def test_cancel_dish_cancels_and_verifies():
+    page = CanteenPage(ORDERED_MENU_PAGE)
+    result, html = cancel_dish(LunchSite(page=page), page.content(), parse_day_spec("2026-11-24"))
+
+    assert clicks(page) == [cancel_link(1, 0), CONFIRM_YES]
+    assert (result.status, result.item.number, result.item.ordered) == ("cancelled", "3", False)
+    assert result.message == "Vaše objednávka byla zrušena"
+    assert (result.credit_before, result.credit_after) == (1600, 1700)
+    assert not parse_menu(html).days[1].ordered
+
+
+def test_cancel_dish_leaves_a_day_with_nothing_ordered_alone():
+    page = CanteenPage(MENU_PAGE)
+    result, _html = cancel_dish(LunchSite(page=page), page.content(), parse_day_spec("2026-10-16"))
+
+    assert clicks(page) == []
+    assert (result.status, result.item) == ("not-ordered", None)
+
+
+def test_cancel_dish_fails_when_the_dish_stays_ordered():
+    done = add_info_panel(ORDERED_MENU_PAGE, "Vaše objednávka byla zrušena")
+    page = cancel_page(done=done)
+    with pytest.raises(CancelError, match="still marked as ordered"):
+        cancel_dish(LunchSite(page=page), page.content(), parse_day_spec("2026-11-23"))
+
+
+def test_every_ordered_dish_is_planned_for_cancelling():
+    menu = parse_menu(MENU_PAGE)
+    menu.days[1].items[0].cancel_action = None  # 14. října: too late to cancel
+    plan = plan_cancellations(menu)
+
+    assert summary(plan) == [
+        (13, "chosen", "3"),
+        (14, "skipped", "3"),
+        (15, "not-ordered", None),
+        (16, "not-ordered", None),
+        (19, "not-ordered", None),
+        (20, "not-ordered", None),
+        (21, "not-ordered", None),
+        (22, "not-ordered", None),
+        (23, "not-ordered", None),
+    ]
+    assert plan[1].message == "objednávku už nelze zrušit"
+
+
+def test_planned_dishes_are_cancelled_one_after_another():
+    page = CanteenPage(ORDERED_MENU_PAGE)
+    plan = plan_cancellations(parse_menu(page.content()))
+    results = cancel_chosen(LunchSite(page=page), page.content(), plan)
+
+    assert clicks(page) == [
+        cancel_link(0, 0), CONFIRM_YES,
+        cancel_link(1, 0), CONFIRM_YES,
+        cancel_link(2, 0), CONFIRM_YES,
+        cancel_link(3, 0), CONFIRM_YES,
+        cancel_link(4, 0), CONFIRM_YES,
+    ]  # fmt: skip
+    assert [status for _day, status, _number in summary(results)] == ["cancelled"] * 5
+    assert not parse_menu(page.content()).ordered_items
+    assert [result.credit_after for result in results] == [1700, 1800, 1900, 2000, 2100]
+
+
+def test_cancel_all_dry_run_clicks_nothing():
+    page = CanteenPage(ORDERED_MENU_PAGE)
+    plan = plan_cancellations(parse_menu(page.content()))
+    results = cancel_chosen(LunchSite(page=page), page.content(), plan, dry_run=True)
+
+    assert clicks(page) == []
+    assert [result.status for result in results] == ["dry-run"] * 5
+
+
+def test_a_failed_cancellation_stops_the_run():
+    page = CanteenPage(ORDERED_MENU_PAGE, refuse=(cancel_link(2, 0),))
+    plan = plan_cancellations(parse_menu(page.content()))
+    results = cancel_chosen(LunchSite(page=page), page.content(), plan)
+
+    assert clicks(page)[-1] == cancel_link(2, 0)
+    assert summary(results) == [
+        (23, "cancelled", "3"),
+        (24, "cancelled", "3"),
+        (25, "failed", "3"),
+        (26, "skipped", "3"),
+        (27, "skipped", "3"),
+    ]
+    assert "Objednávky na tento den jsou uzavřeny" in results[2].message
+
+
+def test_a_dish_cancelled_meanwhile_is_not_clicked_again():
+    page = CanteenPage(ORDERED_MENU_PAGE)
+    plan = plan_cancellations(parse_menu(page.content()))
+    # Somebody cancels the 25th on the site after the plan was made.
+    wednesday = Action("Zrušit objednávku", link_id(cancel_link(2, 0)))
+    LunchSite(page=page).cancel(wednesday, expected_date="25. listopadu 2026")
+
+    results = cancel_chosen(LunchSite(page=page), page.content(), plan)
+    assert summary(results)[2] == (25, "not-ordered", "3")
+    assert clicks(page).count(cancel_link(2, 0)) == 1
+
+
+def test_a_cancelled_day_can_be_ordered_again():
+    page = CanteenPage(ORDERED_MENU_PAGE)
+    site = LunchSite(page=page)
+    _result, html = cancel_dish(site, page.content(), parse_day_spec("2026-11-24"))
+    result, html = order_dish(site, html, parse_day_spec("2026-11-24"), "6")
+
+    assert result.status == "ordered"
+    assert [item.ordered for item in parse_menu(html).days[1].items] == [False, True]

@@ -1,4 +1,4 @@
-"""Human readable rendering of a parsed :class:`~.models.Menu` and of orders."""
+"""Human readable rendering of a parsed :class:`~.models.Menu`, of orders and cancellations."""
 
 from __future__ import annotations
 
@@ -59,10 +59,20 @@ def render_user(user: UserInfo, *, color: bool = True) -> str:
     return line + "\n"
 
 
-_STATUSES = {
+_Labels = dict[str, tuple[str, str]]
+
+# status -> (style, label), in the order of the summary of the '-all' commands.
+_ORDER_LABELS: _Labels = {
     OrderResult.ORDERED: ("green", "Objednáno"),
     OrderResult.ALREADY_ORDERED: ("green", "Už bylo objednáno"),
     OrderResult.DRY_RUN: ("yellow", "Neobjednáno (--dry-run)"),
+    OrderResult.SKIPPED: ("yellow", "Přeskočeno"),
+    OrderResult.FAILED: ("red", "Chyba"),
+}
+_CANCEL_LABELS: _Labels = {
+    OrderResult.CANCELLED: ("green", "Zrušeno"),
+    OrderResult.NOT_ORDERED: ("dim", "Nebylo objednáno"),
+    OrderResult.DRY_RUN: ("yellow", "Nezrušeno (--dry-run)"),
     OrderResult.SKIPPED: ("yellow", "Přeskočeno"),
     OrderResult.FAILED: ("red", "Chyba"),
 }
@@ -70,10 +80,12 @@ _STATUSES = {
 
 def render_order_result(result: OrderResult, *, color: bool = True, width: int = 78) -> str:
     """Render the outcome of the ``order`` command."""
-    paint = _Palette(color)
-    lines = _render_result(result, paint, width, show_message=True)
-    lines.extend(_credit(result.credit_before, result.credit_after))
-    return "\n".join(lines) + "\n"
+    return _render_single(result, _ORDER_LABELS, color, width)
+
+
+def render_cancel_result(result: OrderResult, *, color: bool = True, width: int = 78) -> str:
+    """Render the outcome of the ``cancel`` command."""
+    return _render_single(result, _CANCEL_LABELS, color, width)
 
 
 def render_order_results(
@@ -85,29 +97,64 @@ def render_order_results(
     width: int = 78,
 ) -> str:
     """Render the outcome of the ``order-all`` command, day by day."""
+    return _render_many(
+        results, _ORDER_LABELS, OrderResult.ORDERED, credit_before, credit_after, color, width
+    )
+
+
+def render_cancel_results(
+    results: list[OrderResult],
+    *,
+    credit_before: Decimal | None = None,
+    credit_after: Decimal | None = None,
+    color: bool = True,
+    width: int = 78,
+) -> str:
+    """Render the outcome of the ``cancel-all`` command, day by day."""
+    return _render_many(
+        results, _CANCEL_LABELS, OrderResult.CANCELLED, credit_before, credit_after, color, width
+    )
+
+
+def _render_single(result: OrderResult, labels: _Labels, color: bool, width: int) -> str:
+    paint = _Palette(color)
+    lines = _render_result(result, labels, paint, width, show_message=True)
+    lines.extend(_credit(result.credit_before, result.credit_after))
+    return "\n".join(lines) + "\n"
+
+
+def _render_many(
+    results: list[OrderResult],
+    labels: _Labels,
+    done: str,
+    credit_before: Decimal | None,
+    credit_after: Decimal | None,
+    color: bool,
+    width: int,
+) -> str:
     paint = _Palette(color)
     if not results:
         return "Jídelníček je prázdný.\n"
 
     counts = [
         f"{label.lower()}: {count}"
-        for status, (_style, label) in _STATUSES.items()
+        for status, (_style, label) in labels.items()
         if (count := sum(result.status == status for result in results))
     ]
     lines = [paint("bold", "Celý jídelníček: ") + ", ".join(counts), ""]
     for result in results:
         # The site's 'objednávka byla úspěšně provedena' would repeat on every day.
-        show_message = result.status != OrderResult.ORDERED
-        lines.extend(_render_result(result, paint, width, show_message=show_message))
+        show_message = result.status != done
+        lines.extend(_render_result(result, labels, paint, width, show_message=show_message))
         lines.append("")
     lines.extend(_credit(credit_before, credit_after))
     return "\n".join(lines).rstrip() + "\n"
 
 
 def _render_result(
-    result: OrderResult, paint: _Palette, width: int, *, show_message: bool
+    result: OrderResult, labels: _Labels, paint: _Palette, width: int, *, show_message: bool
 ) -> list[str]:
-    style, label = _STATUSES[result.status]
+    style, label = labels[result.status]
     day = result.day
     date = f" ({day.date.isoformat()})" if day.date else ""
     lines = [f"{paint(style, label)}: {paint('bold', day.label or '?')}{date}"]

@@ -7,6 +7,8 @@ from scio_lunch_order.models import Menu, OrderResult, UserInfo
 from scio_lunch_order.parser import parse_menu
 from scio_lunch_order.render import (
     format_credit,
+    render_cancel_result,
+    render_cancel_results,
     render_menu,
     render_order_result,
     render_order_results,
@@ -132,3 +134,47 @@ def test_order_results_per_day(ordered):
 
 def test_order_results_of_an_empty_menu():
     assert render_order_results([], color=False) == "Jídelníček je prázdný.\n"
+
+
+def test_cancel_result(ordered):
+    day = ordered.days[0]
+    result = OrderResult(
+        OrderResult.CANCELLED,
+        day,
+        day.items[0],
+        message="Vaše objednávka byla zrušena",
+        credit_before=Decimal("1600"),
+        credit_after=Decimal("1700"),
+    )
+    assert render_cancel_result(result, color=False) == (
+        "Zrušeno: zítra, 21. září (2026-09-21)\n"
+        "    3. Vepřové maso po námořnicku (rajský protlak, vejce) (lepek 1.1,3),\n"
+        "      těstoviny 1,3\n"
+        "    Vaše objednávka byla zrušena\n"
+        "Stav účtu: 1\xa0600\xa0Kč → 1\xa0700\xa0Kč\n"
+    )
+
+    dry_run = OrderResult(OrderResult.DRY_RUN, day, day.items[0])
+    assert render_cancel_result(dry_run, color=False).startswith("Nezrušeno (--dry-run): ")
+
+
+def test_cancel_results_per_day(ordered):
+    results = [
+        OrderResult(OrderResult.CANCELLED, ordered.days[0], ordered.days[0].items[0], message="ok"),
+        OrderResult(OrderResult.NOT_ORDERED, ordered.days[1], None),
+        OrderResult(OrderResult.SKIPPED, ordered.days[2], ordered.days[2].items[0], message="pozdě"),
+    ]
+    text = render_cancel_results(results, color=False)
+    assert text == (
+        "Celý jídelníček: zrušeno: 1, nebylo objednáno: 1, přeskočeno: 1\n"
+        "\n"
+        "Zrušeno: zítra, 21. září (2026-09-21)\n"
+        "    3. Vepřové maso po námořnicku (rajský protlak, vejce) (lepek 1.1,3),\n"
+        "      těstoviny 1,3\n"
+        "\n"
+        "Nebylo objednáno: úterý 22. září (2026-09-22)\n"
+        "\n"
+        "Přeskočeno: středa 23. září (2026-09-23)\n"
+        "    3. Kuřecí prsní maso na kari 1,7,9, dušená rýže\n"
+        "    pozdě\n"
+    )

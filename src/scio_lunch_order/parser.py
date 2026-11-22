@@ -90,9 +90,22 @@ def parse_confirm_message(html: str) -> str | None:
     """The question of the ``dialogPanel`` shown after clicking ``Objednat``.
 
     ``Opravdu si přejete objednat rybí nugetky … dne pátek 16. října 2026, …?``
+    or, after ``Zrušit objednávku``, ``Opravdu si přejete zrušit objednávku …``.
     Returns ``None`` when the page shows no dialog.
     """
     return _panel_text(html, "dialogPanel", "paneldlg__msg")
+
+
+def parse_confirm_header(html: str) -> str | None:
+    """The header of the ``dialogPanel``: ``Objednání stravy`` or ``Zrušení objednávky``.
+
+    Returns ``None`` when the page shows no dialog, or a dialog without a header.
+    """
+    panel = BeautifulSoup(html, "html.parser").find(id="dialogPanel")
+    header = panel.find(class_="paneldlg__header") if panel is not None else None
+    if header is None:
+        return None
+    return _clean(header.get_text(" ")) or None
 
 
 def parse_info_message(html: str) -> str | None:

@@ -6,6 +6,7 @@ import pytest
 
 from scio_lunch_order.parser import (
     ParseError,
+    parse_confirm_header,
     parse_confirm_message,
     parse_info_message,
     parse_menu,
@@ -193,6 +194,31 @@ def test_confirmation_question_is_read_from_the_dialog():
     assert parse_info_message(html) is None
 
 
+def test_order_dialog_header():
+    html = (DATA / "order_confirm.html").read_text(encoding="utf-8")
+    assert parse_confirm_header(html) == "Objednání stravy"
+
+
+def test_cancel_dialog_is_read():
+    html = (DATA / "cancel_confirm.html").read_text(encoding="utf-8")
+    assert parse_confirm_header(html) == "Zrušení objednávky"
+    assert parse_confirm_message(html) == (
+        "Opravdu si přejete zrušit objednávku bratislavské vepřové plecko /maso kostičky/ "
+        "s hráškem, mrkví, smetanou 1,7,9 dne pondělí 23. listopadu 2026, jídelna Jídelna?"
+    )
+
+
+def test_ordered_dishes_have_a_cancel_link():
+    menu = parse_menu((DATA / "cancel_confirm.html").read_text(encoding="utf-8"))
+    assert [(day.date.day, [item.number for item in day.ordered_items]) for day in menu.days] == [
+        (23, ["3"]), (24, ["3"]), (25, ["3"]), (26, ["3"]), (27, ["3"]),
+    ]  # fmt: skip
+    assert all(item.can_cancel for item in menu.ordered_items)
+    assert menu.days[0].items[0].cancel_action.element_id == (
+        "repeaterDays_ctl00_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood2"
+    )
+
+
 def test_info_popup_is_read_although_it_gets_hidden():
     html = (DATA / "order_done.html").read_text(encoding="utf-8")
     assert parse_info_message(html) == "Vaše objednávka byla úspěšně provedena"
@@ -202,4 +228,5 @@ def test_info_popup_is_read_although_it_gets_hidden():
 def test_plain_menu_has_no_dialog_or_popup():
     html = (DATA / "menu_ordered.html").read_text(encoding="utf-8")
     assert parse_confirm_message(html) is None
+    assert parse_confirm_header(html) is None
     assert parse_info_message(html) is None

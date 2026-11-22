@@ -1,4 +1,4 @@
-"""Turns the ``order`` command line arguments into a dish of a parsed menu.
+"""Turns the ``order`` and ``cancel`` command line arguments into a dish of a menu.
 
 ``--day`` accepts an ISO date (``2026-10-16``), a numeric Czech date
 (``16.10.2026``) or a label like the one the site shows (``pátek 16. října``,
@@ -109,8 +109,8 @@ def parse_item_spec(text: str) -> str:
     return str(int(match.group(1)))
 
 
-def find_item(menu: Menu, day_spec: DaySpec, number: str) -> tuple[Day, FoodItem]:
-    """The day and the dish the command line asks for."""
+def find_day(menu: Menu, day_spec: DaySpec) -> Day:
+    """The day the command line asks for."""
     days = [day for day in menu.days if day.date and day_spec.matches(day.date)]
     if not days:
         available = ", ".join(day.date.isoformat() for day in menu.days if day.date)
@@ -126,7 +126,12 @@ def find_item(menu: Menu, day_spec: DaySpec, number: str) -> tuple[Day, FoodItem
             f"{day.date.isoformat()} is {WEEKDAYS[day.date.weekday()]}, "
             f"not {WEEKDAYS[day_spec.weekday]}"
         )
+    return day
 
+
+def find_item(menu: Menu, day_spec: DaySpec, number: str) -> tuple[Day, FoodItem]:
+    """The day and the dish the command line asks for."""
+    day = find_day(menu, day_spec)
     items = [item for item in day.items if item.number == number]
     if not items:
         available = ", ".join(item.number for item in day.items if item.number)
@@ -139,6 +144,38 @@ def find_item(menu: Menu, day_spec: DaySpec, number: str) -> tuple[Day, FoodItem
     return day, items[0]
 
 
+def find_ordered_item(
+    menu: Menu, day_spec: DaySpec, number: str | None = None
+) -> tuple[Day, FoodItem | None]:
+    """The day and the dish to cancel.
+
+    Without a ``number`` it is the only ordered dish of the day, or ``None``
+    when the day has nothing ordered.  With a ``number`` it is that dish,
+    ordered or not.
+    """
+    if number is not None:
+        return find_item(menu, day_spec, number)
+    day = find_day(menu, day_spec)
+    ordered = day.ordered_items
+    if len(ordered) > 1:
+        numbers = ", ".join(item.number or "?" for item in ordered)
+        raise SelectionError(
+            f"{describe_day(day)} has dishes {numbers} ordered -- choose one with --item"
+        )
+    return day, ordered[0] if ordered else None
+
+
+def ensure_cancellable(day: Day, item: FoodItem) -> None:
+    """Refuse a cancellation the site does not offer, e.g. after the deadline.
+
+    Call it only for a dish that is ordered.
+    """
+    if not item.can_cancel:
+        raise SelectionError(
+            f"the order of dish {item.number} on {describe_day(day)} cannot be cancelled"
+        )
+
+
 def ensure_orderable(day: Day, item: FoodItem) -> None:
     """Refuse an order the ``order`` command cannot place safely.
 
@@ -148,7 +185,7 @@ def ensure_orderable(day: Day, item: FoodItem) -> None:
     if others:
         raise SelectionError(
             f"{describe_day(day)} already has dish {', '.join(others)} ordered -- "
-            "cancel it on the site first (cancelling is not supported yet)"
+            "cancel it first with the 'cancel' command"
         )
     if not item.can_order:
         raise SelectionError(f"dish {item.number} on {describe_day(day)} cannot be ordered")

@@ -6,7 +6,8 @@ Like in a browser, the old page stays until something waits for the new one:
 a ``wait_for_selector`` matching an element of the old page returns at once.
 The login states are described by selector sets.  The states of the order
 flow serve saved pages from ``tests/data`` and answer selectors from their
-markup.  :class:`CanteenPage` goes further and takes any number of orders.
+markup.  :class:`CanteenPage` goes further and takes any number of orders
+and cancellations.
 """
 
 import re
@@ -28,6 +29,10 @@ PASSWORD = "s3cret"
 # order_confirm.html and ordered in order_done.html.
 ORDER_LINK_ID = "repeaterDays_ctl03_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood"
 ORDER_LINK = f'a[id="{ORDER_LINK_ID}"]'
+# The 'Zrušit objednávku' link of dish 3 on zítra, 23. listopadu, whose
+# dialog cancel_confirm.html shows.
+CANCEL_LINK_ID = "repeaterDays_ctl00_repeaterFoodType_ctl00_repeaterFood_ctl00_btnFood2"
+CANCEL_LINK = f'a[id="{CANCEL_LINK_ID}"]'
 CONFIRM_YES = "a#btnDialogYes"
 
 
@@ -159,6 +164,9 @@ def add_info_panel(html: str, text: str) -> str:
 MENU_PAGE = remove_element(read_page("order_confirm.html"), "dialogPanel")
 CONFIRM_PAGE = read_page("order_confirm.html")
 DONE_PAGE = read_page("order_done.html")
+# 23.-27. listopadu, dish 3 ordered on every day; 24. and 27. offer dish 6 too.
+ORDERED_MENU_PAGE = remove_element(read_page("cancel_confirm.html"), "dialogPanel")
+CANCEL_CONFIRM_PAGE = read_page("cancel_confirm.html")
 
 
 def order_page(
@@ -179,6 +187,26 @@ def order_page(
     )
 
 
+def cancel_page(confirm: str = CANCEL_CONFIRM_PAGE, done: str | None = None) -> FakePage:
+    """A logged-in menu on which dish 3 of zítra, 23. listopadu can be cancelled.
+
+    Clicking its 'Zrušit objednávku' shows ``confirm``, answering ``Ano``
+    shows ``done``: by default the menu with the dish cancelled.
+    """
+    if done is None:
+        soup = BeautifulSoup(ORDERED_MENU_PAGE, "html.parser")
+        _mark_cancelled(soup, CANCEL_LINK_ID)
+        done = add_info_panel(str(soup), "Vaše objednávka byla zrušena")
+    return FakePage(
+        state="menu",
+        pages={"menu": ORDERED_MENU_PAGE, "confirm": confirm, "done": done},
+        transitions={
+            ("menu", CANCEL_LINK): "confirm",
+            ("confirm", CONFIRM_YES): "done",
+        },
+    )
+
+
 def order_link(day: int, food_type: int) -> str:
     """The selector of 'Objednat' of the ``food_type``-th dish of the ``day``-th day."""
     return (
@@ -187,13 +215,24 @@ def order_link(day: int, food_type: int) -> str:
     )
 
 
+def cancel_link(day: int, food_type: int) -> str:
+    """The selector of 'Zrušit objednávku' of the ``food_type``-th dish of the ``day``-th day."""
+    return order_link(day, food_type).replace('btnFood"]', 'btnFood2"]')
+
+
+def link_id(selector: str) -> str:
+    """``a[id="..."]`` -> the id."""
+    return re.fullmatch(r'a\[id="(.+)"\]', selector).group(1)
+
+
 class CanteenPage(FakePage):
-    """A logged-in menu that takes orders the way the site does.
+    """A logged-in menu that takes orders and cancellations the way the site does.
 
     'Objednat' shows the dialog about its dish, 'Ano' marks the dish as
     ordered, charges ``PRICE`` and shows the popup -- the popup stays in the
-    markup of the next page.  The links in ``refuse`` get the popup with an
-    error instead of the dialog.
+    markup of the next page.  'Zrušit objednávku' does the reverse: its 'Ano'
+    removes the link and the green 'Objednáno' mark, and refunds ``PRICE``.
+    The links in ``refuse`` get the popup with an error instead of the dialog.
     """
 
     PRICE = 100
@@ -211,19 +250,22 @@ class CanteenPage(FakePage):
             panel.decompose()
 
         if selector == CONFIRM_YES:
-            link = soup.find(id=self._pending)
-            cancel = soup.new_tag("a", id=f"{self._pending}2", href="javascript:void(0)")
-            cancel.string = "Zrušit objednávku"
-            link.insert_after(cancel)
-            credit = soup.find(id="lblUserSpec")
-            amount = int(re.search(r"(\d+) Kč", credit.get_text()).group(1)) - self.PRICE
-            credit.string = f"Stav účtu:\xa0{amount} Kč"
-            panel = _info_panel("Vaše objednávka byla úspěšně provedena")
+            if self._pending.endswith("2"):
+                _mark_cancelled(soup, self._pending)
+                _add_credit(soup, self.PRICE)
+                panel = _info_panel("Vaše objednávka byla zrušena")
+            else:
+                link = soup.find(id=self._pending)
+                cancel = soup.new_tag("a", id=f"{self._pending}2", href="javascript:void(0)")
+                cancel.string = "Zrušit objednávku"
+                link.insert_after(cancel)
+                _add_credit(soup, -self.PRICE)
+                panel = _info_panel("Vaše objednávka byla úspěšně provedena")
             self._pending = None
         elif selector in self.refuse:
             panel = _info_panel("Objednávky na tento den jsou uzavřeny")
         else:
-            self._pending = re.fullmatch(r'a\[id="(.+)"\]', selector).group(1)
+            self._pending = link_id(selector)
             panel = self._dialog(self._pending)
 
         soup.find(class_="sticky").insert_before(BeautifulSoup(panel, "html.parser"))
@@ -235,16 +277,37 @@ class CanteenPage(FakePage):
             (day, item)
             for day in menu.days
             for item in day.items
-            if item.order_action and item.order_action.element_id == element_id
+            for action in (item.order_action, item.cancel_action)
+            if action and action.element_id == element_id
         )
+        if item.cancel_action and item.cancel_action.element_id == element_id:
+            header, question = "Zrušení objednávky", "Opravdu si přejete zrušit objednávku"
+        else:
+            header, question = "Objednání stravy", "Opravdu si přejete objednat"
         dish = item.label[0].lower() + item.label[1:]
         return (
-            '<div id="dialogPanel" class="popupmsgbck zix103"><span class="paneldlg__msg">'
-            f"Opravdu si přejete objednat <br>{dish} dne "
+            '<div id="dialogPanel" class="popupmsgbck zix103">'
+            f'<div class="paneldlg__header">{header}</div><span class="paneldlg__msg">'
+            f"{question} <br>{dish} dne "
             f"{WEEKDAYS[day.date.weekday()]} {czech_date(day.date)}, jídelna Jídelna?</span>"
             '<a id="btnDialogYes" href="javascript:void(0)">Ano</a>'
             '<a id="btnDialogNo" href="javascript:void(0)">Ne</a></div>'
         )
+
+
+def _mark_cancelled(soup: BeautifulSoup, cancel_id: str) -> None:
+    """Remove the cancel link and the green 'Objednáno' marks of its dish."""
+    link = soup.find(id=cancel_id)
+    block = link.find_parent(class_="fblock")
+    for mark in block.find_all("img", title="Objednáno") if block else ():
+        mark.decompose()
+    link.decompose()
+
+
+def _add_credit(soup: BeautifulSoup, amount: int) -> None:
+    credit = soup.find(id="lblUserSpec")
+    balance = int(re.search(r"(-?\d+) Kč", credit.get_text()).group(1)) + amount
+    credit.string = f"Stav účtu:\xa0{balance} Kč"
 
 
 def _info_panel(text: str) -> str:

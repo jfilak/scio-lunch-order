@@ -157,17 +157,21 @@ class UserInfo:
 
 @dataclass(frozen=True)
 class OrderResult:
-    """What the ``order`` commands did with the dish of one day.
+    """What the ``order`` and ``cancel`` commands did with the dish of one day.
 
-    ``item`` is ``None`` only for a day skipped before any dish was chosen.
+    ``item`` is ``None`` only for a day skipped before any dish was chosen,
+    and for a day with nothing to cancel.
     """
 
     ORDERED: ClassVar[str] = "ordered"
     ALREADY_ORDERED: ClassVar[str] = "already-ordered"
+    CANCELLED: ClassVar[str] = "cancelled"
+    # Nothing to cancel: the dish (or the whole day) is not ordered.
+    NOT_ORDERED: ClassVar[str] = "not-ordered"
     DRY_RUN: ClassVar[str] = "dry-run"
     SKIPPED: ClassVar[str] = "skipped"
     FAILED: ClassVar[str] = "failed"
-    # Planned by 'order-all', not ordered yet; never the final status.
+    # Planned by 'order-all' or 'cancel-all', not done yet; never the final status.
     CHOSEN: ClassVar[str] = "chosen"
 
     status: str

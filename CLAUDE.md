@@ -4,3 +4,5 @@
   - samples/01_logged_in.html
   - samples/02_confirm_order.html
   - samples/03_popup_ordered.html
+  - samples/04_with_ordered_items.html
+  - samples/05_confirm_cancel_menu.html

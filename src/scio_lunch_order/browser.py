@@ -23,7 +23,7 @@ from playwright.sync_api import Page, Playwright, TimeoutError as PlaywrightTime
 from playwright.sync_api import sync_playwright
 
 from .models import Action
-from .parser import parse_confirm_message, parse_info_message
+from .parser import parse_confirm_header, parse_confirm_message, parse_info_message
 
 DEFAULT_URL = "https://skola.czszlin.cz:4434/iorders/"
 
@@ -49,6 +49,10 @@ class OrderError(LunchSiteError):
     """The site did not take the order the way the README describes."""
 
 
+class CancelError(LunchSiteError):
+    """The site did not cancel the order the way the README describes."""
+
+
 @dataclass
 class BrowserOptions:
     url: str = DEFAULT_URL
@@ -72,7 +76,10 @@ class LunchSite:
     LOGOUT_LINK = "a#cmdLogoutUser"
     MENU = ".warea"
     CONFIRM_YES = "a#btnDialogYes"
-    # The popup after an order; hidden by a script, so wait for it 'attached'.
+    # The header of the dialog after 'Zrušit objednávku'.
+    CANCEL_HEADER = "Zrušení objednávky"
+    # The popup after an order or a cancellation; hidden by a script, so wait
+    # for it 'attached'.
     INFO_PANEL = "#infoPanel"
 
     def __init__(self, options: BrowserOptions | None = None, page: Page | None = None) -> None:
@@ -191,6 +198,44 @@ class LunchSite:
         unanswered, so nothing is ordered.  Returns the HTML of the page shown
         after the order: the menu with the ``infoPanel`` popup.
         """
+        return self._confirmed_postback(
+            action, expected_date, error=OrderError, what="order", done="ordered"
+        )
+
+    def cancel(self, action: Action, expected_date: str) -> str:
+        """Click a ``Zrušit objednávku`` link and answer ``Ano`` in the dialog.
+
+        Like :meth:`order`, but the dialog must also be headed ``Zrušení
+        objednávky``.  Returns the HTML of the page shown after the
+        cancellation: the menu with the ``infoPanel`` popup.
+        """
+        return self._confirmed_postback(
+            action,
+            expected_date,
+            error=CancelError,
+            what="cancellation",
+            done="cancelled",
+            header=self.CANCEL_HEADER,
+        )
+
+    # -- internals ---------------------------------------------------------
+
+    def _confirmed_postback(
+        self,
+        action: Action,
+        expected_date: str,
+        *,
+        error: type[LunchSiteError],
+        what: str,
+        done: str,
+        header: str | None = None,
+    ) -> str:
+        """Click ``action``, check the dialog it opens and answer ``Ano``.
+
+        ``what`` and ``done`` word the errors: ``order`` / ``ordered``.  The
+        dialog is answered only if its question names ``expected_date`` and,
+        when ``header`` is given, its header is ``header``.
+        """
         LOG.info("clicking %s (%s)", action.label, action.element_id)
         try:
             html = self._postback(
@@ -198,29 +243,34 @@ class LunchSite:
                 wait_for=f"{self.CONFIRM_YES}, {self.INFO_PANEL}",
             )
         except PlaywrightTimeoutError as exc:
-            raise OrderError("no confirmation dialog appeared, nothing was ordered") from exc
+            raise error(f"no confirmation dialog appeared, nothing was {done}") from exc
 
         question = parse_confirm_message(html)
         if question is None:
             reason = parse_info_message(html) or "no confirmation dialog"
-            raise OrderError(f"the site refused the order: {reason}")
+            raise error(f"the site refused the {what}: {reason}")
         LOG.info("the site asks: %s", question)
+        if header is not None:
+            found = parse_confirm_header(html)
+            if found is None or found.casefold() != header.casefold():
+                raise error(
+                    f"the confirmation dialog is not headed {header!r} but {found!r}, "
+                    f"nothing was {done}: {question}"
+                )
         if expected_date not in question:
-            raise OrderError(
+            raise error(
                 f"the confirmation dialog is not about {expected_date}, "
-                f"nothing was ordered: {question}"
+                f"nothing was {done}: {question}"
             )
 
-        LOG.info("confirming the order")
+        LOG.info("confirming the %s", what)
         try:
             return self._postback(self.CONFIRM_YES, wait_for=self.INFO_PANEL)
         except PlaywrightTimeoutError as exc:
-            raise OrderError(
+            raise error(
                 "the site did not answer the confirmation -- check the menu, "
-                "the dish may or may not be ordered"
+                f"the dish may or may not be {done}"
             ) from exc
-
-    # -- internals ---------------------------------------------------------
 
     def _click(self, selector: str, wait_for: str) -> None:
         """Click a postback link and wait for the re-rendered page."""
@@ -233,9 +283,10 @@ class LunchSite:
         """Click a postback link and return the HTML of the page it loads.
 
         Unlike :meth:`_click` this waits for the navigation first: after an
-        order the page still holds the hidden ``infoPanel``, which must not be
-        taken for the answer to the next click.  ``wait_for`` is looked up only
-        in the complete new page, and only needs to be attached.
+        order (or a cancellation) the page still holds the hidden
+        ``infoPanel``, which must not be taken for the answer to the next
+        click.  ``wait_for`` is looked up only in the complete new page, and
+        only needs to be attached.
         """
         self.page.wait_for_selector(selector, state="visible")
         self._pause()

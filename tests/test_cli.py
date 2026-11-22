@@ -7,13 +7,17 @@ import sys
 
 import pytest
 from fake_site import (
+    CANCEL_LINK,
     CONFIRM_YES,
     DATA,
     MENU_PAGE,
     ORDER_LINK,
+    ORDERED_MENU_PAGE,
     PASSWORD,
     CanteenPage,
     add_info_panel,
+    cancel_link,
+    cancel_page,
     order_link,
     order_page,
 )
@@ -252,3 +256,124 @@ def test_order_all_from_file_orders_nothing(monkeypatch, capsys):
 def test_pause_defaults_to_a_human_pace():
     args = cli._parse_args(["order-all", "-u", "parent"])
     assert cli._browser_options(args).pause_s == 2.0
+
+
+def test_cancel_cancels_the_order_of_the_day(use_page, capsys):
+    page = use_page(cancel_page())
+    assert cli.main(["cancel", "--day", "pondělí 23. listopadu", *LOGIN]) == 0
+
+    assert clicks(page) == [CANCEL_LINK, CONFIRM_YES]
+    out = capsys.readouterr().out
+    assert out.startswith("Zrušeno: zítra, 23. listopadu (2026-11-23)\n    3. Bratislavské")
+    assert "Vaše objednávka byla zrušena" in out
+
+
+def test_cancel_reports_the_refund(use_page, capsys):
+    use_page(CanteenPage(ORDERED_MENU_PAGE))
+    assert cli.main(["cancel", "--day", "2026-11-27", *LOGIN]) == 0
+    assert capsys.readouterr().out.endswith("Stav účtu: 1\xa0600\xa0Kč → 1\xa0700\xa0Kč\n")
+
+
+def test_cancel_as_json(use_page, capsys):
+    use_page(CanteenPage(ORDERED_MENU_PAGE))
+    assert cli.main(["--json", "cancel", "--day", "2026-11-24", *LOGIN]) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "cancelled"
+    assert data["day"] == {"label": "úterý 24. listopadu", "date": "2026-11-24"}
+    assert (data["item"]["number"], data["item"]["ordered"]) == ("3", False)
+    assert (data["credit_before"], data["credit_after"]) == ("1600", "1700")
+
+
+def test_cancel_of_a_day_with_nothing_ordered_clicks_nothing(use_page, capsys):
+    page = use_page(CanteenPage(MENU_PAGE))
+    assert cli.main(["cancel", "--day", "pátek 16. října", *LOGIN]) == 0
+
+    assert clicks(page) == []
+    assert capsys.readouterr().out.startswith("Nebylo objednáno: pátek 16. října (2026-10-16)\n")
+
+
+def test_cancel_of_a_dish_that_is_not_ordered_clicks_nothing(use_page, capsys):
+    page = use_page(CanteenPage(ORDERED_MENU_PAGE))
+    assert cli.main(["cancel", "--day", "2026-11-24", "--item", "6", *LOGIN]) == 0
+
+    assert clicks(page) == []
+    assert capsys.readouterr().out.startswith("Nebylo objednáno: úterý 24. listopadu")
+
+
+def test_cancel_dry_run_does_not_click(use_page, capsys):
+    page = use_page(cancel_page())
+    assert cli.main(["cancel", "--day", "2026-11-23", "--dry-run", *LOGIN]) == 0
+
+    assert clicks(page) == []
+    assert capsys.readouterr().out.startswith("Nezrušeno (--dry-run): zítra, 23. listopadu")
+
+
+def test_cancel_from_file_cancels_nothing(capsys):
+    path = DATA / "cancel_confirm.html"
+    assert cli.main(["cancel", "--from-file", str(path), "--day", "2026-11-23", "--no-color"]) == 0
+    assert capsys.readouterr().out.startswith("Nezrušeno (--dry-run): ")
+
+
+def test_cancel_needs_a_day():
+    with pytest.raises(SystemExit) as error:
+        cli._parse_args(["cancel", "-u", "parent"])
+    assert error.value.code == 2
+
+
+def test_cancel_all_cancels_every_order(use_page, monkeypatch, capsys):
+    page = use_page(CanteenPage(ORDERED_MENU_PAGE))
+    # Nothing is asked: a closed stdin must not matter.
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    assert cli.main(["cancel-all", *LOGIN]) == 0
+
+    assert clicks(page)[::2] == [cancel_link(day, 0) for day in range(5)]
+    out = capsys.readouterr().out
+    assert out.startswith("Celý jídelníček: zrušeno: 5\n")
+    assert "Zrušeno: pátek 27. listopadu (2026-11-27)\n    3. Halušky" in out
+    assert out.endswith("Stav účtu: 1\xa0600\xa0Kč → 2\xa0100\xa0Kč\n")
+
+
+def test_cancel_all_lists_the_days_with_nothing_ordered(use_page, capsys):
+    page = use_page(CanteenPage(MENU_PAGE))
+    assert cli.main(["cancel-all", *LOGIN]) == 0
+
+    assert clicks(page)[::2] == [cancel_link(0, 0), cancel_link(1, 0)]
+    out = capsys.readouterr().out
+    assert out.startswith("Celý jídelníček: zrušeno: 2, nebylo objednáno: 7\n")
+    assert "Nebylo objednáno: pátek 16. října (2026-10-16)\n" in out
+
+
+def test_cancel_all_stops_at_a_failure(use_page, capsys):
+    page = use_page(CanteenPage(ORDERED_MENU_PAGE, refuse=(cancel_link(1, 0),)))
+    assert cli.main(["cancel-all", *LOGIN]) == 1
+
+    assert clicks(page) == [cancel_link(0, 0), CONFIRM_YES, cancel_link(1, 0)]
+    out = capsys.readouterr().out
+    assert out.startswith("Celý jídelníček: zrušeno: 1, přeskočeno: 3, chyba: 1\n")
+    assert "Chyba: úterý 24. listopadu (2026-11-24)" in out
+
+
+def test_cancel_all_as_json(use_page, capsys):
+    use_page(CanteenPage(ORDERED_MENU_PAGE))
+    assert cli.main(["cancel-all", "--json", *LOGIN]) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert [day["status"] for day in data["days"]] == ["cancelled"] * 5
+    assert (data["credit_before"], data["credit_after"]) == ("1600", "2100")
+
+
+def test_cancel_all_dry_run_does_not_click(use_page, capsys):
+    page = use_page(CanteenPage(ORDERED_MENU_PAGE))
+    assert cli.main(["cancel-all", "--dry-run", *LOGIN]) == 0
+
+    assert clicks(page) == []
+    assert capsys.readouterr().out.startswith("Celý jídelníček: nezrušeno (--dry-run): 5\n")
+
+
+def test_cancel_all_from_file_cancels_nothing(capsys):
+    path = DATA / "cancel_confirm.html"
+    assert cli.main(["cancel-all", "--from-file", str(path), "--no-color"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("Celý jídelníček: nezrušeno (--dry-run): 5\n")
+    assert out.endswith("Stav účtu: 1\xa0600\xa0Kč\n")
